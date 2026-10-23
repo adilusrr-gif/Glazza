@@ -8,3 +8,5 @@ ftfy==6.3.1
 regex==2025.9.18
 tqdm==4.67.1
 packaging==25.0
+fvcore==0.1.5.post20221221
+einops==0.8.1

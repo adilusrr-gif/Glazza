@@ -33,6 +33,10 @@ class Store:
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at REAL NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, subject TEXT NOT NULL, detail TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
             ''')
+            columns = {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}
+            for name in ('clip_start', 'clip_end'):
+                if name not in columns:
+                    db.execute(f'ALTER TABLE jobs ADD COLUMN {name} REAL')
         self.path.chmod(0o600)
 
     @contextlib.contextmanager

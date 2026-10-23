@@ -65,6 +65,9 @@ services:
       GLAZZA_WORKER_KEY: ${GLAZZA_WORKER_KEY:?Run python scripts/setup.py first}
       GLAZZA_DEVICE: cpu
       GLAZZA_ACTION_THRESHOLD: ${GLAZZA_ACTION_THRESHOLD:-0.75}
+      GLAZZA_FIGHT_THRESHOLD: ${GLAZZA_FIGHT_THRESHOLD:-0.8}
+      GLAZZA_FIGHT_WINDOWS: ${GLAZZA_FIGHT_WINDOWS:-3}
+      GLAZZA_TORCH_THREADS: ${GLAZZA_TORCH_THREADS:-2}
     volumes:
       - ${GLAZZA_DATA_DIR:-./data}:/data:ro
       - ./models:/models:ro

@@ -17,6 +17,7 @@ class Engine:
     def __init__(self, store, settings):
         self.store, self.settings = store, settings
         self.health = {'frigate': 'starting', 'last_sync': None, 'error': None, 'analyzer': {'state': 'unavailable', 'models': []}}
+        self.health['fight_monitor'] = {'state': 'waiting', 'busy_cameras': [], 'skipped_windows': 0}
         # Service-to-service traffic must not leave the Docker network via ambient proxies.
         self.client = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
         self.tasks = []
@@ -99,8 +100,54 @@ class Engine:
                     self.health['analyzer'] = response.json()
                 except Exception:
                     self.health['analyzer'] = {'state': 'unavailable', 'models': []}
+                self.schedule_fights()
             self.cleanup()
             await asyncio.sleep(self.settings.poll_seconds)
+
+    def schedule_fights(self, now=None):
+        """Overlapping 12s recordings, every 6s, with 20s allowance for NVR flush.
+
+        Bounded backlog, durable per-camera cursor, independent of tracked-object end.
+        Only requested cameras and time spans containing a detected person are eligible.
+        """
+        health = self.health['fight_monitor']
+        ready = {m['id'] for m in self.health['analyzer'].get('models', []) if m.get('state') == 'ready'}
+        if self.settings.demo or not ({'fight', 'vadclip'} & ready):
+            health.update(state='model_missing', busy_cameras=[])
+            return
+        if self.health['frigate'] != 'online':
+            health.update(state='nvr_offline', busy_cameras=[])
+            return
+        now = time.time() if now is None else now
+        latest = int((now - 20) // 6) * 6
+        busy = []
+        cameras = [c for c in self.store.cameras() if c['analyze']]
+        for camera in cameras:
+            key = 'fight_cursor:' + camera['id']
+            cursor = self.store.rows('SELECT value FROM meta WHERE key=?', (key,))
+            previous = float(cursor[0]['value']) if cursor else latest - 6
+            if previous >= latest:
+                continue
+            pending = self.store.rows("SELECT COUNT(*) AS n FROM jobs WHERE state IN ('queued','running') AND camera=? AND clip_start IS NOT NULL", (camera['id'],))[0]['n']
+            total = self.store.rows("SELECT COUNT(*) AS n FROM jobs WHERE state IN ('queued','running')")[0]['n']
+            if pending >= 2 or total >= 100:
+                busy.append(camera['id'])
+                continue
+            if latest - previous > 120:
+                skipped = int((latest - previous) // 6) - 1
+                health['skipped_windows'] += skipped
+                self.store.audit('system', 'fight.coverage_gap', camera['id'], f'{skipped} windows skipped after backlog/outage')
+                previous = latest - 6
+            end, start = previous + 6, previous - 6
+            people = self.store.rows("SELECT id FROM events WHERE source='frigate' AND camera=? AND started < ? AND (ended IS NULL OR ended > ?) LIMIT 1", (camera['id'], end, start))
+            with self.store.connect() as db:
+                if people:
+                    job_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f'glazza:fight:{camera["id"]}:{end}'))
+                    db.execute('INSERT OR IGNORE INTO jobs(id,camera,state,created,updated,clip_start,clip_end) VALUES(?,?,?,?,?,?,?)',
+                               (job_id, camera['id'], 'queued', now, now, start, end))
+                db.execute('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, str(end)))
+        health.update(state='backlog' if busy else 'monitoring' if cameras else 'no_cameras', busy_cameras=busy,
+                      window_seconds=12, stride_seconds=6, recording_delay_seconds=20)
 
     def cleanup(self):
         now = time.time()
@@ -116,8 +163,12 @@ class Engine:
 
     async def download_clip(self, job, path):
         temporary = path.with_suffix('.part')
+        if job.get('clip_start') is not None:
+            route = f"/api/{job['camera']}/start/{job['clip_start']}/end/{job['clip_end']}/clip.mp4"
+        else:
+            route = f"/api/events/{job['source_id']}/clip.mp4"
         try:
-            async with self.client.stream('GET', self.settings.frigate_url + f"/api/events/{job['source_id']}/clip.mp4", timeout=60) as response:
+            async with self.client.stream('GET', self.settings.frigate_url + route, timeout=60) as response:
                 response.raise_for_status()
                 size = 0
                 with temporary.open('wb') as handle:
@@ -133,19 +184,33 @@ class Engine:
     def apply_result(self, job, result):
         if not isinstance(result.get('detections'), list):
             raise ValueError('Invalid analyzer response')
+        # One card per kind/clip. Keep the strongest interval and expose its timestamps.
+        by_kind = {}
         for detection in result['detections']:
+            if detection.get('kind') not in by_kind or detection['score'] > by_kind[detection['kind']]['score']:
+                by_kind[detection['kind']] = detection
+        for detection in by_kind.values():
             if detection.get('kind') not in ('fight', 'theft'):
                 continue
+            start = job.get('clip_start')
+            started = (start + detection.get('start_seconds', 0)) if start is not None else job['created']
+            ended = (start + detection.get('end_seconds', 12)) if start is not None else job['created']
+            # Overlapping recording windows should not flood the operator with the same signal.
+            if start is not None and self.store.rows("SELECT id FROM events WHERE source='analysis' AND camera=? AND kind=? AND started BETWEEN ? AND ? LIMIT 1",
+                                                    (job['camera'], detection['kind'], started - 30, started + 30)):
+                continue
             self.store.event(source='analysis', source_id=job['id'] + ':' + detection['kind'], camera=job['camera'],
-                             kind=detection['kind'], score=detection['score'], started=job['created'], ended=job['created'],
-                             details={'job_id': job['id'], 'origin_event': job.get('event_id'), 'model': result.get('model'), 'label': detection.get('label'), 'review_required': True})
+                             kind=detection['kind'], score=detection['score'], started=started, ended=ended,
+                             details={'job_id': job['id'], 'origin_event': job.get('event_id'), 'model': detection.get('model', result.get('model')), 'label': detection.get('label'),
+                                      'start_seconds': detection.get('start_seconds'), 'end_seconds': detection.get('end_seconds'),
+                                      'rolling': start is not None, 'review_required': True})
         self.store.execute("UPDATE jobs SET state='succeeded',result=?,error=NULL,updated=? WHERE id=?", (json.dumps(result, ensure_ascii=False), time.time(), job['id']))
 
     async def work(self):
         while True:
             try:
                 available = self.health['analyzer'].get('state') == 'ready'
-                rows = self.store.rows("SELECT * FROM jobs WHERE state='queued' AND updated < ? ORDER BY created LIMIT 1", (time.time() - 2,)) if available else []
+                rows = self.store.rows("SELECT * FROM jobs WHERE state='queued' AND updated < ? ORDER BY (clip_start IS NOT NULL) DESC, created LIMIT 1", (time.time() - 2,)) if available else []
                 if rows:
                     job = rows[0]
                     if self.store.execute("UPDATE jobs SET state='running',attempts=attempts+1,updated=? WHERE id=? AND state='queued'", (time.time(), job['id'])):
@@ -158,11 +223,11 @@ class Engine:
         path = self.settings.data / 'jobs' / (job['id'] + '.mp4')
         try:
             if not path.exists():
-                if not job['source_id']:
+                if not job['source_id'] and job.get('clip_start') is None:
                     raise RuntimeError('Видео больше не доступно')
                 await self.download_clip(job, path)
             self.store.execute('UPDATE jobs SET file=? WHERE id=?', (path.name, job['id']))
-            response = await self.client.post(self.settings.analyzer_url + '/analyze', json={'job_id': job['id']},
+            response = await self.client.post(self.settings.analyzer_url + '/analyze', json={'job_id': job['id'], 'mode': 'fight' if job.get('clip_start') is not None else 'all'},
                                               headers={'X-Worker-Key': self.settings.worker_key}, timeout=600)
             response.raise_for_status()
             self.apply_result(job, response.json())
@@ -177,7 +242,7 @@ class Engine:
 def seed_demo(store):
     if store.rows("SELECT key FROM meta WHERE key='demo_seeded'"):
         return
-    for id_, name in [('entrance', 'Главный вход'), ('hall', 'Торговый зал'), ('warehouse', 'Склад')]:
+    for id_, name in [('entrance', 'Главный вход'), ('hall', 'Коридор · 1 этаж'), ('warehouse', 'Лаборатория')]:
         store.execute('INSERT OR IGNORE INTO cameras(id,name,stream,zones) VALUES(?,?,?,?)', (id_, name, '', '[]'))
     for i, (camera, kind, score, ago) in enumerate([('warehouse', 'intrusion', 0.96, 240), ('hall', 'theft', 0.81, 1200), ('entrance', 'person', 0.94, 2400), ('hall', 'fight', 0.87, 5600)]):
         store.event(source='demo', source_id=str(i), camera=camera, kind=kind, score=score, started=time.time() - ago, ended=time.time() - ago + 15, details={'demonstration': True})

@@ -43,6 +43,7 @@ def main():
                     page.get_by_role('button',name='Войти в Glazza').click()
                     page.get_by_role('heading',name='Всё под наблюдением.').wait_for()
                 login(18080)
+                page.locator('.fight-alert').wait_for()
                 page.screenshot(path=str(ROOT/'docs/dashboard.png'),full_page=True)
                 page.locator('[data-view=events]').click()
                 page.locator('[data-event]').first.click()
@@ -51,6 +52,11 @@ def main():
                 page.locator('#modal').wait_for(state='hidden')
                 page.locator('[data-filter=status]').select_option('dismissed')
                 page.locator('tbody tr').first.wait_for()
+                page.get_by_role('button', name='Проверить сигналы').click()
+                page.locator('tbody tr').first.click()
+                page.get_by_role('button', name='Отклонить', exact=True).click()
+                page.locator('#modal').wait_for(state='hidden')
+                page.locator('.fight-alert').wait_for(state='hidden')
                 page.locator('[data-view=analysis]').click()
                 assert page.locator('#video-file').is_disabled()
                 page.locator('[data-view=system]').click()
@@ -67,6 +73,9 @@ def main():
                 page.close(); page=browser.new_page(viewport={'width':1440,'height':1000})
                 page.on('pageerror',lambda error:errors.append(str(error)))
                 login(18081)
+                page.locator('[data-view=analysis]').click()
+                assert page.get_by_role('heading', name='Возможная драка', exact=True).count() == 1
+                page.locator('[data-view=overview]').click()
                 page.locator('[data-action=add-camera]').first.click()
                 page.locator('#camera-form input[name=name]').fill('Тестовая камера')
                 page.locator('#camera-form input[name=id]').fill('test_camera')
@@ -85,7 +94,7 @@ def main():
                 page.locator('#modal').wait_for(state='hidden')
                 page.get_by_role('status').filter(has_text='Конфигурация сохранена').wait_for()
                 assert not errors, errors
-                print('PASS: login, navigation, review, filters, mobile layout, camera setup, polygon zones, offline apply. No page errors.')
+                print('PASS: login, fight alert -> review -> dismissal, filters, mobile layout, camera setup, zones, offline apply. No page errors.')
                 browser.close()
         finally:
             for process in processes:

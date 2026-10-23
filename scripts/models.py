@@ -3,9 +3,11 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 import urllib.request
 
 COMMIT = 'c41067f07d252efcda18008bea367886070c33b0'
@@ -69,9 +71,38 @@ def prepare_vadclip(root, checkpoint):
     register(destination, f'https://github.com/nwpu-zxr/VadCLIP/tree/{COMMIT} (official UCF-Crime checkpoint supplied by operator)')
 
 
+def download_fight(root):
+    print('VD-MIL by Roger Figueroa Quintero: CC BY-NC 4.0. Commercial use requires author permission.')
+    artifacts = json.loads((Path(__file__).resolve().parents[1] / 'analyzer/fight_artifacts.json').read_text())
+    target = root / 'vdmil'
+    # A partially downloaded model must never appear ready. Existing valid installs are reusable.
+    if target.exists():
+        if all((target / name).is_file() and digest(target / name) == item['sha256']
+               for name, item in artifacts['files'].items()):
+            print('VD-MIL already installed and verified.')
+            return
+        raise RuntimeError('models/vdmil is incomplete or modified. Move it aside and rerun the installer.')
+    with tempfile.TemporaryDirectory(prefix='.vdmil-', dir=root) as temporary:
+        staging = Path(temporary) / 'vdmil'
+        staging.mkdir()
+        for name, item in artifacts['files'].items():
+            path = staging / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            print('Downloading ' + name, flush=True)
+            with urllib.request.urlopen(item['url'], timeout=60) as source, path.open('wb') as out:
+                shutil.copyfileobj(source, out)
+                out.flush()
+                os.fsync(out.fileno())
+            if digest(path) != item['sha256']:
+                raise RuntimeError('Pinned artifact checksum mismatch: ' + name)
+        (staging / 'glazza-source.json').write_text(json.dumps(artifacts, indent=2))
+        staging.rename(target)
+    print('VD-MIL installed. Restart analyzer; check the fight model status in Glazza.')
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['face', 'vadclip'])
+    parser.add_argument('action', choices=['face', 'fight', 'vadclip'])
     parser.add_argument('--directory', default='models')
     parser.add_argument('--checkpoint', help='Official UCF-Crime .pth file, obtained from upstream README')
     args = parser.parse_args()
@@ -79,6 +110,8 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     if args.action == 'face':
         download_face(root)
+    elif args.action == 'fight':
+        download_fight(root)
     else:
         if not args.checkpoint:
             parser.error('--checkpoint is required for vadclip')

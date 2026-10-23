@@ -27,8 +27,11 @@ def main():
         writer=cv2.VideoWriter(str(root/'sample.mp4'),cv2.VideoWriter_fourcc(*'mp4v'),16,(frame.shape[1],frame.shape[0]))
         for _ in range(32):writer.write(frame)
         writer.release()
+        (root/'models').mkdir()
+        for name in ('face_landmarker.task','face_landmarker.task.json'):
+            (root/'models'/name).symlink_to(ROOT/'models'/name)
         env={**os.environ,'GLAZZA_PASSWORD':'test-password-12345','GLAZZA_WORKER_KEY':'model-smoke-worker-key-1234567890123456',
-             'GLAZZA_DATA':str(root/'data'),'GLAZZA_MODELS':str(ROOT/'models'),'GLAZZA_DEMO':'false',
+             'GLAZZA_DATA':str(root/'data'),'GLAZZA_MODELS':str(root/'models'),'GLAZZA_DEMO':'false',
              'FRIGATE_CONFIG':str(root/'config.yml'),'FRIGATE_URL':'http://127.0.0.1:59999','ANALYZER_URL':'http://127.0.0.1:18090'}
         with (root/'servers.log').open('w') as logs:
             try:

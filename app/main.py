@@ -137,6 +137,7 @@ def create_app(settings=None, background=True):
     def overview(user=Depends(authenticated)):
         counts = {r['kind']: r['n'] for r in store.rows('SELECT kind,count(*) AS n FROM events WHERE started>? GROUP BY kind', (time.time() - 86400,))}
         return {'mode': mode, 'cameras': len(store.cameras()), 'counts': counts,
+                'pending_fights': store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='fight'")[0]['n'],
                 'pending': store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind!='person'")[0]['n'],
                 'health': engine.health, 'jobs': store.rows('SELECT state,count(*) AS n FROM jobs GROUP BY state'),
                 'retention_days': settings.retention_days}
@@ -222,7 +223,7 @@ def create_app(settings=None, background=True):
 
     @app.get('/api/jobs')
     def jobs(user=Depends(authenticated)):
-        items = store.rows('SELECT id,camera,state,created,updated,error,result,file FROM jobs ORDER BY created DESC LIMIT 100')
+        items = store.rows('SELECT id,camera,state,created,updated,error,result,file,clip_start,clip_end FROM jobs ORDER BY created DESC LIMIT 100')
         for item in items:
             item['result'] = json.loads(item['result']) if item['result'] else None
             item['has_file'] = bool(item.pop('file'))
