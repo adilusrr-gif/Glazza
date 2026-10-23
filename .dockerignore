@@ -1,0 +1,17 @@
+.git
+.env*
+credentials.txt
+data
+data-demo
+config
+media
+models
+backups
+.venv
+__pycache__
+**/__pycache__
+.pytest_cache
+node_modules
+test-results
+docs
+tests

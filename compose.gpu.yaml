@@ -1,0 +1,15 @@
+# Requires NVIDIA Container Toolkit. Applies to the analyzer only.
+services:
+  analyzer:
+    build:
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu124
+    environment:
+      GLAZZA_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

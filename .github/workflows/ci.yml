@@ -1,0 +1,23 @@
+name: Glazza checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  product:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12', cache: pip}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - run: node --check app/static/app.js
+      - run: pip install playwright==1.51.0 && python -m playwright install --with-deps chromium
+      - run: python tests/browser_smoke.py
+      - run: python scripts/setup.py --demo
+      - run: docker compose --profile nvr --profile ai config --quiet
+      - run: docker build -t glazza:test .

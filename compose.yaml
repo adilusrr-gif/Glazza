@@ -1,0 +1,78 @@
+name: glazza
+services:
+  glazza:
+    build: .
+    restart: unless-stopped
+    user: "${GLAZZA_UID:-10001}:${GLAZZA_GID:-10001}"
+    environment:
+      GLAZZA_DATA: /data
+      FRIGATE_CONFIG: /config/config.yml
+      FRIGATE_URL: http://frigate:5000
+      ANALYZER_URL: http://analyzer:8090
+      GLAZZA_ADMIN: ${GLAZZA_ADMIN:-admin}
+      GLAZZA_PASSWORD: ${GLAZZA_PASSWORD:?Run python scripts/setup.py first}
+      GLAZZA_WORKER_KEY: ${GLAZZA_WORKER_KEY:?Run python scripts/setup.py first}
+      GLAZZA_DEMO: ${GLAZZA_DEMO:-false}
+      GLAZZA_SECURE_COOKIE: ${GLAZZA_SECURE_COOKIE:-false}
+      GLAZZA_RETENTION_DAYS: ${GLAZZA_RETENTION_DAYS:-30}
+    ports:
+      - "${GLAZZA_BIND:-127.0.0.1}:8080:8080"
+    volumes:
+      - ${GLAZZA_DATA_DIR:-./data}:/data
+      - ./config:/config
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 768m
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:0.18.2
+    restart: unless-stopped
+    shm_size: 256mb
+    profiles: [nvr]
+    ports:
+      - "127.0.0.1:8971:8971"
+    volumes:
+      - ./config:/config
+      - ./media:/media/frigate
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /tmp/cache:size=512m
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+
+  analyzer:
+    profiles: [ai]
+    build:
+      context: .
+      dockerfile: analyzer/Dockerfile
+    restart: unless-stopped
+    user: "${GLAZZA_UID:-10001}:${GLAZZA_GID:-10001}"
+    environment:
+      GLAZZA_DATA: /data
+      GLAZZA_MODELS: /models
+      GLAZZA_WORKER_KEY: ${GLAZZA_WORKER_KEY:?Run python scripts/setup.py first}
+      GLAZZA_DEVICE: cpu
+      GLAZZA_ACTION_THRESHOLD: ${GLAZZA_ACTION_THRESHOLD:-0.75}
+    volumes:
+      - ${GLAZZA_DATA_DIR:-./data}:/data:ro
+      - ./models:/models:ro
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 6g
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
