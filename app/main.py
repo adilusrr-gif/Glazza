@@ -148,6 +148,12 @@ def create_app(settings=None, background=True):
     def cameras(user=Depends(authenticated)):
         return store.cameras()
 
+    @app.get('/api/cameras/status')
+    def camera_status(user=Depends(authenticated)):
+        latest, alerts = store.camera_activity()
+        return {camera['id']: {**engine.camera_signal(camera['id']), 'pending_alerts': alerts.get(camera['id'], 0),
+                               'latest_event': latest.get(camera['id'])} for camera in store.cameras()}
+
     @app.post('/api/cameras', status_code=201)
     def add_camera(body: Camera, user=Depends(authenticated)):
         writable()
@@ -231,6 +237,15 @@ def create_app(settings=None, background=True):
             db.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)',
                        (time.time(), user['username'], 'event.review', event_id, json.dumps(body.model_dump(), ensure_ascii=False)))
         return {'ok': True}
+
+    @app.get('/api/events/{event_id}')
+    def get_event(event_id: str, user=Depends(authenticated)):
+        rows = store.rows('SELECT * FROM events WHERE id=?', (event_id,))
+        if not rows:
+            raise HTTPException(404, 'Событие не найдено')
+        event = rows[0]
+        event['details'] = json.loads(event['details'])
+        return event
 
     @app.get('/api/audit')
     def audit(user=Depends(authenticated)):

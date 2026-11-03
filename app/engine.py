@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import re
 import time
 import uuid
@@ -21,10 +22,55 @@ class Engine:
         # Service-to-service traffic must not leave the Docker network via ambient proxies.
         self.client = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
         self.tasks = []
+        self.camera_signal_snapshot = {'checked_at': None, 'updated_at': None, 'cameras': {}, 'reason': 'waiting'}
 
     async def start(self):
         self.store.execute("UPDATE jobs SET state='queued', updated=? WHERE state='running'", (time.time(),))
-        self.tasks = [asyncio.create_task(self.poll()), asyncio.create_task(self.work())]
+        self.tasks = [asyncio.create_task(self.poll()), asyncio.create_task(self.work()), asyncio.create_task(self.poll_camera_signals())]
+
+    async def sync_camera_signals(self):
+        response = await self.client.get(self.settings.frigate_url + '/api/stats')
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get('cameras'), dict):
+            raise ValueError('Invalid camera statistics')
+        service = payload.get('service')
+        updated = service.get('last_updated') if isinstance(service, dict) else None
+        valid_number = lambda n: isinstance(n, (int, float)) and not isinstance(n, bool) and math.isfinite(n)
+        cameras = {}
+        for identifier, data in payload['cameras'].items():
+            fps = data.get('camera_fps') if isinstance(data, dict) else None
+            cameras[identifier] = fps if valid_number(fps) and fps >= 0 else None
+        # Publish only measured FPS and timestamps; raw NVR statistics can contain secrets.
+        self.camera_signal_snapshot = {'checked_at': time.time(), 'updated_at': updated if valid_number(updated) else None,
+                                       'cameras': cameras, 'reason': None}
+
+    async def poll_camera_signals(self):
+        while True:
+            if not self.settings.demo:
+                try:
+                    await self.sync_camera_signals()
+                except Exception:
+                    self.camera_signal_snapshot = {'checked_at': time.time(), 'updated_at': None, 'cameras': {}, 'reason': 'nvr_unavailable'}
+            await asyncio.sleep(self.settings.poll_seconds)
+
+    def camera_signal(self, camera_id, now=None):
+        snapshot = self.camera_signal_snapshot
+        result = {'signal': 'unknown', 'checked_at': snapshot['checked_at'], 'reason': snapshot['reason'], 'fps': None}
+        if self.settings.demo:
+            return {**result, 'signal': 'demo', 'reason': 'demo'}
+        if snapshot['reason']:
+            return result
+        now = time.time() if now is None else now
+        # Never keep a camera blue after polling stops or Frigate's statistics freeze.
+        if any(at is None or not -5 <= now - at <= 30 for at in (snapshot['checked_at'], snapshot['updated_at'])):
+            return {**result, 'reason': 'stale'}
+        if camera_id not in snapshot['cameras']:
+            return {**result, 'signal': 'unconfigured', 'reason': 'not_configured'}
+        fps = snapshot['cameras'][camera_id]
+        if fps is None:
+            return {**result, 'reason': 'invalid_stats'}
+        return {**result, 'signal': 'online' if fps > 0 else 'offline', 'reason': None if fps > 0 else 'no_frames', 'fps': fps}
 
     async def close(self):
         for task in self.tasks:

@@ -5,6 +5,8 @@
 | Компонент | Источник | Условия |
 |---|---|---|
 | Frigate 0.18.2 | https://github.com/blakeblackshear/frigate | MIT для кода; торговые марки регулируются отдельно |
+| Leaflet 1.9.4 | https://github.com/Leaflet/Leaflet | BSD-2-Clause; лицензия сохранена в `app/static/vendor/leaflet` |
+| Leaflet.markercluster 1.5.3 | https://github.com/Leaflet/Leaflet.markercluster | MIT; лицензия сохранена в `app/static/vendor/markercluster` |
 | VD-MIL · Roger Figueroa Quintero, 2025–2026 | https://github.com/roggerfq/violence-detection-mil | CC BY-NC 4.0; коммерческое использование только с письменным разрешением автора |
 | MoViNet-pytorch · Lorenzo Atzeni / fork roggerfq | https://github.com/roggerfq/MoViNet-pytorch | MIT для кода; оригинальный LICENSE сохраняется установщиком |
 | VadCLIP | https://github.com/nwpu-zxr/VadCLIP | Apache-2.0 для кода; происхождение и условия checkpoint / UCF-Crime проверяются отдельно |

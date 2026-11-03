@@ -28,6 +28,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS cameras(id TEXT PRIMARY KEY, name TEXT NOT NULL, stream TEXT NOT NULL, zones TEXT NOT NULL DEFAULT '[]', analyze INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, source TEXT NOT NULL, camera TEXT NOT NULL, kind TEXT NOT NULL, score REAL, started REAL NOT NULL, ended REAL, status TEXT NOT NULL DEFAULT 'new', note TEXT NOT NULL DEFAULT '', details TEXT NOT NULL DEFAULT '{}', UNIQUE(source, source_id, kind));
                 CREATE INDEX IF NOT EXISTS event_time ON events(started DESC);
+                CREATE INDEX IF NOT EXISTS event_camera_time ON events(camera,started DESC,id DESC);
+                CREATE INDEX IF NOT EXISTS event_camera_alert ON events(camera) WHERE status='new' AND kind IN ('fight','intrusion','theft');
                 CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, event_id TEXT, source_id TEXT, camera TEXT NOT NULL, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, created REAL NOT NULL, updated REAL NOT NULL, error TEXT, result TEXT, file TEXT);
                 CREATE INDEX IF NOT EXISTS job_state ON jobs(state, created);
                 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at REAL NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, subject TEXT NOT NULL, detail TEXT NOT NULL);
@@ -95,3 +97,10 @@ class Store:
         for item in items:
             item['details'] = json.loads(item['details'])
         return items
+
+    def camera_activity(self):
+        latest = self.rows('''SELECT e.id,e.camera,e.kind,e.started,e.status,e.score
+            FROM cameras c JOIN events e ON e.id=(
+                SELECT id FROM events WHERE camera=c.id ORDER BY started DESC,id DESC LIMIT 1)''')
+        alerts = self.rows("SELECT camera,count(*) AS n FROM events WHERE status='new' AND kind IN ('fight','intrusion','theft') GROUP BY camera")
+        return {event['camera']: event for event in latest}, {row['camera']: row['n'] for row in alerts}

@@ -115,9 +115,10 @@ with sync_playwright() as p:
         page.locator('[data-map-camera="' + other_id + '"]').wait_for()
         page.locator('#map-search').fill('Интерактивная')
         assert page.locator('[data-map-camera]').count() == 1
-        assert page.locator('.camera-map-marker').count() == 1
+        assert page.evaluate('cameraMap.cluster.getLayers().length') == 1
+        assert page.evaluate('(id)=>cameraMap.cluster.hasLayer(cameraMap.markers.get(id))', identifier)
         page.locator('#map-search').fill('')
-        assert page.locator('.camera-map-marker').count() == 2
+        assert page.evaluate('cameraMap.cluster.getLayers().length') == 2
         page.locator('#camera-map').click(position={'x': 250, 'y': 200})
         page.locator('[data-existing-camera]').select_option(other_id)
         page.locator('[data-place-camera]').click()

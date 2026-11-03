@@ -1,13 +1,41 @@
 'use strict';
 
 const kazakhstanBounds = [[40.5, 46.4], [55.5, 87.4]];
-const cameraMap = {map: null, markers: new Map(), selected: null, preview: null, signature: '', busy: false, dragging: false};
+const cameraMap = {map: null, cluster: null, markers: new Map(), selected: null, preview: null, signature: '', busy: false, dragging: false, filter: 'all'};
 const hasCameraLocation = camera => Number.isFinite(camera.latitude) && Number.isFinite(camera.longitude);
+const cameraSignalLabels = {online: 'Работает', offline: 'Нет сигнала', unknown: 'Нет данных', unconfigured: 'Не подключена', demo: 'Демонстрация'};
+
+function cameraMapStatus(id) {
+  const status = state.cameraStatus[id] || {signal: 'unknown', pending_alerts: 0, latest_event: null};
+  return {...status, color: status.pending_alerts > 0 ? 'alert' : status.signal};
+}
+
+function cameraStatusHint(id) {
+  const status = cameraMapStatus(id);
+  const reasons = {waiting: 'Ожидание проверки', stale: 'Статистика устарела', nvr_unavailable: 'Нет связи с NVR', not_configured: 'Примените настройки камер', invalid_stats: 'Нет статистики потока'};
+  return (cameraSignalLabels[status.signal] || 'Нет данных') + (reasons[status.reason] ? ' · ' + reasons[status.reason] : '') + (status.pending_alerts ? ' · Непроверенных тревог: ' + status.pending_alerts : '');
+}
+
+function openCameraMarker(id) {
+  const marker = cameraMap.markers.get(id);
+  if (!marker) return;
+  if (cameraMap.cluster?.hasLayer(marker)) cameraMap.cluster.zoomToShowLayer(marker, () => marker.openPopup());
+  else marker.openPopup();
+}
+
+function clusterCameraIcon(cluster) {
+  const markers = cluster.getAllChildMarkers(), count = markers.length;
+  const alert = markers.some(marker => marker.cameraStatus === 'alert');
+  const online = markers.some(marker => marker.cameraStatus === 'online');
+  const color = alert ? 'alert' : online ? 'online' : markers.every(marker => marker.cameraStatus === 'offline') ? 'offline' : 'unknown';
+  return L.divIcon({className: 'map-camera-cluster signal-' + color,
+    html: `<span data-help="${count} камер${alert ? ' · Есть непроверенные тревоги' : ''}. Нажмите, чтобы раскрыть группу.">${count}</span>`, iconSize: [48, 48], iconAnchor: [24, 24]});
+}
 
 function disposeCameraMap() {
   document.body.classList.remove('map-expanded-body');
   if (cameraMap.map) cameraMap.map.remove();
-  Object.assign(cameraMap, {map: null, markers: new Map(), selected: null, preview: null, signature: '', busy: false, dragging: false});
+  Object.assign(cameraMap, {map: null, cluster: null, markers: new Map(), selected: null, preview: null, signature: '', busy: false, dragging: false, filter: 'all'});
 }
 
 function renderCameraMap() {
@@ -21,10 +49,10 @@ function renderCameraMap() {
 
           <div id="camera-map" class="camera-map" role="region" aria-label="Интерактивная карта Казахстана"></div>
           <p id="map-tile-error" class="warning-box" role="status" hidden>Не удалось загрузить часть карты. Проверьте доступ к интернету. Список камер и ввод координат доступны.</p>
-          <div class="map-legend"><span><i class="map-dot"></i> Место камеры</span><span><i class="map-dot draft"></i> Новая отметка</span></div>
+          <div class="map-legend"><span><i class="map-dot online"></i> Работает</span><span><i class="map-dot offline"></i> Нет сигнала</span><span><i class="map-dot alert"></i> Тревога</span>${help('Голубой: поступают кадры. Серый: нет сигнала. Контурная отметка: нет свежих данных. Красный: есть непроверенная тревога. Жёлтый: новое положение ещё не сохранено.', 'Статусы на карте')}</div>
         </section>
         <aside class="map-sidebar">
-          <section class="panel map-cameras"><h2>Камеры</h2><input id="map-search" type="search" aria-label="Поиск камер" placeholder="Поиск камер" autocomplete="off"><div id="map-camera-list" class="map-camera-list"></div></section>
+          <section class="panel map-cameras"><h2>Камеры</h2><input id="map-search" type="search" aria-label="Поиск камер" placeholder="Поиск камер" autocomplete="off"><div class="map-status-filter" role="group" aria-label="Фильтр камер"><button type="button" data-map-filter="all" aria-pressed="true">Все</button><button type="button" data-map-filter="alerts" aria-pressed="false">Тревоги</button><button type="button" data-map-filter="offline" aria-pressed="false">Нет сигнала</button></div><div id="map-camera-list" class="map-camera-list"></div></section>
           <section class="panel map-location" id="map-location" hidden></section>
         </aside>
       </div>`;
@@ -33,6 +61,8 @@ function renderCameraMap() {
     } else {
       cameraMap.map = L.map('camera-map', {zoomControl: false, minZoom: 3, maxZoom: 19, zoomSnap: 0.25, worldCopyJump: true,
         dragging: true, scrollWheelZoom: true, doubleClickZoom: true, touchZoom: true, keyboard: true});
+      cameraMap.cluster = L.markerClusterGroup({maxClusterRadius: 48, showCoverageOnHover: false, animate: false,
+        spiderfyOnMaxZoom: true, spiderfyDistanceMultiplier: 1.4, iconCreateFunction: clusterCameraIcon}).addTo(cameraMap.map);
       L.control.zoom({position: 'topright', zoomInTitle: 'Приблизить', zoomOutTitle: 'Отдалить'}).addTo(cameraMap.map);
       L.control.scale({imperial: false}).addTo(cameraMap.map);
       const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -53,6 +83,11 @@ function renderCameraMap() {
       cameraMap.map.on('popupopen', refreshImages);
     }
     $('#map-search').oninput = () => { renderMapCameraList(); filterMapMarkers(); };
+    $$('[data-map-filter]').forEach(button => button.onclick = () => {
+      cameraMap.filter = button.dataset.mapFilter;
+      $$('[data-map-filter]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+      clearMapSelection(); renderMapCameraList(); filterMapMarkers();
+    });
     $('#map-expand').onclick = () => expandCameraMap();
     $('#map-country').onclick = () => cameraMap.map?.fitBounds(kazakhstanBounds, {padding: [18, 18]});
     $('#map-fit').onclick = () => {
@@ -64,25 +99,28 @@ function renderCameraMap() {
   const located = state.cameras.filter(hasCameraLocation).length;
   $('#map-summary').innerHTML = `<span><strong>${state.cameras.length}</strong> Всего камер</span><span><strong>${located}</strong> На карте</span><span><strong>${state.cameras.length - located}</strong> Без координат</span>`;
   if (cameraMap.selected && !state.cameras.some(c => c.id === cameraMap.selected)) clearMapSelection();
-  const signature = JSON.stringify(state.cameras);
+  const signature = JSON.stringify([state.cameras, Object.entries(state.cameraStatus).map(([id, status]) =>
+    [id, status.signal, status.reason, status.pending_alerts, status.latest_event])]);
   if (signature !== cameraMap.signature) {
     cameraMap.signature = signature;
     updateMapMarkers();
     renderMapCameraList();
   }
+  if (helpAnchor && !helpAnchor.isConnected) hideHelp();
   cameraMap.map?.invalidateSize({pan: true, animate: false});
 }
 
 function filteredMapCameras() {
   const query = $('#map-search').value.trim().toLocaleLowerCase('ru');
-  return state.cameras.filter(c => (c.name + ' ' + c.id).toLocaleLowerCase('ru').includes(query));
+  return state.cameras.filter(c => (c.name + ' ' + c.id).toLocaleLowerCase('ru').includes(query) &&
+    (cameraMap.filter === 'all' || (cameraMap.filter === 'alerts' ? cameraMapStatus(c.id).pending_alerts > 0 : cameraMapStatus(c.id).signal === 'offline')));
 }
 
 function renderMapCameraList() {
   const cameras = filteredMapCameras();
   const group = (items, title) => items.length ? `<h3 class="map-list-heading">${title} · ${items.length}</h3>${items.map(c => `
-    <button class="map-camera-row ${cameraMap.selected === c.id ? 'selected' : ''}" data-map-camera="${c.id}" aria-pressed="${cameraMap.selected === c.id}" data-help="${hasCameraLocation(c) ? c.latitude.toFixed(4) + ", " + c.longitude.toFixed(4) : "Указать место на карте"}">
-      <span class="map-camera-symbol">${hasCameraLocation(c) ? '▣' : '+'}</span><span><strong>${escapeHTML(c.name)}</strong></span><span aria-hidden="true">↗</span>
+    <button class="map-camera-row ${cameraMap.selected === c.id ? 'selected' : ''}" data-map-camera="${c.id}" aria-pressed="${cameraMap.selected === c.id}" data-help="${escapeHTML(cameraStatusHint(c.id))}${hasCameraLocation(c) ? '' : ' · Указать место на карте'}">
+      <span class="map-camera-symbol signal-${cameraMapStatus(c.id).color}">${hasCameraLocation(c) ? '▣' : '+'}</span><span><strong>${escapeHTML(c.name)}</strong></span><span aria-hidden="true">↗</span>
     </button>`).join('')}` : '';
   $('#map-camera-list').innerHTML = cameras.length ? group(cameras.filter(hasCameraLocation), 'На карте') + group(cameras.filter(c => !hasCameraLocation(c)), 'Без координат') :
     `<p class="map-list-empty">${state.cameras.length ? 'Камеры не найдены.' : 'Нет добавленных камер'}</p>`;
@@ -93,9 +131,16 @@ function filterMapMarkers() {
   const ids = new Set(filteredMapCameras().map(c => c.id));
   let located = 0;
   for (const [id, marker] of cameraMap.markers) {
-    if (ids.has(id)) { if (!cameraMap.map.hasLayer(marker)) marker.addTo(cameraMap.map); located++; }
-    else marker.remove();
+    if (!ids.has(id)) { cameraMap.cluster?.removeLayer(marker); marker.remove(); continue; }
+    located++;
+    if (id === cameraMap.selected) {
+      cameraMap.cluster?.removeLayer(marker);
+      if (!cameraMap.map.hasLayer(marker)) marker.addTo(cameraMap.map);
+    } else if (!cameraMap.cluster?.hasLayer(marker)) {
+      marker.remove(); cameraMap.cluster?.addLayer(marker);
+    }
   }
+  cameraMap.cluster?.refreshClusters();
   $('#map-fit').disabled = located === 0;
 }
 
@@ -104,16 +149,17 @@ function updateMapMarkers() {
   const cameras = state.cameras.filter(hasCameraLocation);
   const ids = new Set(cameras.map(c => c.id));
   for (const [id, marker] of cameraMap.markers) {
-    if (!ids.has(id)) { marker.remove(); cameraMap.markers.delete(id); }
+    if (!ids.has(id)) { cameraMap.cluster?.removeLayer(marker); marker.remove(); cameraMap.markers.delete(id); }
   }
   for (const camera of cameras) {
+    const status = cameraMapStatus(camera.id);
     let marker = cameraMap.markers.get(camera.id);
     if (!marker) {
       marker = L.marker([camera.latitude, camera.longitude], {
-        icon: L.divIcon({className: 'camera-map-marker', html: '<span aria-hidden="true">▣</span>', iconSize: [34, 34], iconAnchor: [17, 17]}),
+        icon: L.divIcon({className: 'camera-map-marker signal-' + status.color, html: '<span aria-hidden="true">▣</span>', iconSize: [34, 34], iconAnchor: [17, 17]}),
         title: camera.name, alt: camera.name, riseOnHover: true, draggable: !state.session.demo,
         autoPan: true
-      }).addTo(cameraMap.map);
+      });
       marker.on('dragstart', () => {
         hideHelp(); cameraMap.map.closePopup(); cameraMap.dragging = true;
       });
@@ -127,19 +173,29 @@ function updateMapMarkers() {
         setMapDraft(destination);
       });
       cameraMap.markers.set(camera.id, marker);
-    } else marker.setLatLng([camera.latitude, camera.longitude]);
+    } else if (!marker.getLatLng().equals([camera.latitude, camera.longitude])) marker.setLatLng([camera.latitude, camera.longitude]);
+    if (marker.cameraStatus !== status.color) marker.setIcon(L.divIcon({className: 'camera-map-marker signal-' + status.color,
+      html: '<span aria-hidden="true">▣</span>', iconSize: [34, 34], iconAnchor: [17, 17]}));
+    marker.cameraStatus = status.color;
+    marker.options.title = camera.name + ' · ' + cameraStatusHint(camera.id);
     if (marker.getElement()) {
-      marker.getElement().title = camera.name;
+      marker.getElement().title = marker.options.title;
       marker.getElement().setAttribute('aria-label', camera.name);
     }
     const popup = document.createElement('div');
     popup.className = 'map-popup';
     popup.innerHTML = `<div class="heading-with-help"><strong>${escapeHTML(camera.name)}</strong>${help(camera.latitude.toFixed(5) + ', ' + camera.longitude.toFixed(5), 'Координаты камеры')}</div>
+      <div class="map-camera-health"><span class="signal-label signal-${status.signal}">${escapeHTML(cameraSignalLabels[status.signal] || 'Нет данных')}</span>${status.pending_alerts ? '<span class="signal-label signal-alert">Тревога</span>' : ''}</div>
       <div class="map-camera-preview"><span>Нет сигнала</span>${state.session.demo ? '' : `<img data-camera-img="${camera.id}" alt="Кадр камеры ${escapeHTML(camera.name)}" hidden>`}<span class="map-preview-status" data-camera-label="${camera.id}">ОЖИДАНИЕ</span></div>
-      <button class="primary" data-open>Открыть камеру</button><button class="text-button" data-locate>Изменить место</button>`;
+      ${status.latest_event ? `<button class="map-event-button" data-latest-event="${status.latest_event.id}" aria-label="Открыть последнее событие"><span><strong>${escapeHTML(kinds[status.latest_event.kind] || status.latest_event.kind)}</strong><time>${dateLabel(status.latest_event.started)}</time></span><span aria-hidden="true">▶</span></button>` : '<div class="map-no-events">Нет событий</div>'}
+      <div class="map-popup-actions"><button class="primary" data-open>Открыть камеру</button><button class="secondary" data-locate aria-label="Изменить место" data-help="Изменить место">⌖</button></div>`;
     $('[data-open]', popup).onclick = () => cameraSettings(camera.id);
     $('[data-locate]', popup).onclick = () => { cameraMap.map.closePopup(); selectMapCamera(camera.id); };
-    marker.bindPopup(popup, {maxWidth: 300, minWidth: 210});
+    const latestButton = $('[data-latest-event]', popup);
+    if (latestButton) latestButton.onclick = () => openEvent(latestButton.dataset.latestEvent);
+    // Reuse the popup so refreshes cannot leave an orphaned window on the map.
+    if (marker.getPopup()) marker.setPopupContent(popup);
+    else marker.bindPopup(popup, {maxWidth: 300, minWidth: 210});
   }
   filterMapMarkers();
   updateMapMarkerState();
@@ -151,6 +207,7 @@ function selectMapCamera(id, {pan = true} = {}) {
   if (!camera) return;
   cameraMap.selected = id;
   cameraMap.preview?.remove(); cameraMap.preview = null;
+  filterMapMarkers();
   updateMapMarkerState();
   renderMapCameraList();
   $('#map-location').hidden = false;
@@ -188,8 +245,8 @@ function updateMapMarkerState() {
     const hasDraft = id === cameraMap.selected && !!cameraMap.preview;
     marker.setOpacity(hasDraft ? 0.35 : 1);
     marker.getElement()?.classList.toggle('is-selected', id === cameraMap.selected);
-    if (cameraMap.busy || state.session?.demo || hasDraft) marker.dragging.disable();
-    else marker.dragging.enable();
+    if (cameraMap.busy || state.session?.demo || hasDraft) marker.dragging?.disable();
+    else marker.dragging?.enable();
   }
   if (cameraMap.preview) {
     if (cameraMap.busy) cameraMap.preview.dragging.disable();
@@ -243,6 +300,7 @@ function clearMapSelection() {
   if (cameraMap.busy) return;
   cameraMap.selected = null;
   cameraMap.preview?.remove(); cameraMap.preview = null;
+  if ($('#camera-map')) filterMapMarkers();
   updateMapMarkerState();
   if (!$('#camera-map')) return;
   $('#map-location').hidden = true;

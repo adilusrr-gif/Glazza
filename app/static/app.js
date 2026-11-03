@@ -7,7 +7,7 @@ const kinds = {intrusion:'Вход в запретную зону', fight:'Во�
 const symbols = {intrusion:'◇', fight:'ϟ', theft:'◈', person:'♙'};
 const statuses = {new:'Не проверено', confirmed:'Подтверждено', dismissed:'Отклонено'};
 const jobStatuses = {queued:'В очереди', running:'Анализируем', failed:'Ошибка', succeeded:'Готово'};
-let state = {view:'overview', session:null, overview:null, cameras:[], events:[], jobs:[]};
+let state = {view:'overview', session:null, overview:null, cameras:[], cameraStatus:{}, events:[], jobs:[]};
 let refreshing = false, uploadBusy = false, timer, imageTimer, toastTimer;
 
 async function api(url, options = {}) {
@@ -40,13 +40,14 @@ async function refresh() {
   if (!state.session || refreshing) return;
   refreshing = true;
   try {
-    const [overview, cameras, events, jobs] = await Promise.all([api('/overview'), api('/cameras'), api('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : '')), api('/jobs')]);
-    Object.assign(state, {overview, cameras, events, jobs});
+    const [overview, cameras, events, jobs, cameraStatus] = await Promise.all([api('/overview'), api('/cameras'), api('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : '')), api('/jobs'), api('/cameras/status')]);
+    Object.assign(state, {overview, cameras, events, jobs, cameraStatus});
     $('#nav-count').textContent = overview.pending;
     $('#sync-status').textContent = overview.health.frigate === 'online' ? 'NVR подключён' : 'Нет связи с NVR';
     setHelp('#sync-status', overview.health.last_sync ? 'Последняя синхронизация: ' + timeLabel(overview.health.last_sync) : 'Frigate ещё не подключён');
     // Preserve filters and interaction focus; refresh tables only when idle outside forms.
-    if (!helpAnchor && !uploadBusy && !$('#video-file')?.files.length && !$('#modal').open && !['SELECT','INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) render();
+    if (state.view === 'map' && !$('#modal').open) render();
+    else if (!helpAnchor && !uploadBusy && !$('#video-file')?.files.length && !$('#modal').open && !['SELECT','INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) render();
   } catch (error) { if (state.session) toast(error.message); }
   finally { refreshing = false; }
 }
@@ -111,7 +112,11 @@ function refreshImages() {
   $$('[data-camera-img]').forEach(img => {
     if (img.dataset.loading === 'true') return;
     img.dataset.loading = 'true';
-    img.onload = () => { img.hidden = false; img.dataset.loading = 'false'; const label = $(`[data-camera-label="${img.dataset.cameraImg}"]`); if (label) label.textContent = 'СИГНАЛ · ' + new Date().toLocaleTimeString('ru-RU'); };
+    img.onload = () => {
+      img.hidden = false; img.dataset.loading = 'false';
+      const label = $(`[data-camera-label="${img.dataset.cameraImg}"]`);
+      if (label) label.textContent = state.cameraStatus[img.dataset.cameraImg]?.signal === 'online' ? 'СИГНАЛ · ' + new Date().toLocaleTimeString('ru-RU') : 'ПОСЛЕДНИЙ КАДР';
+    };
     img.onerror = () => { img.hidden = true; img.dataset.loading = 'false'; const label = $(`[data-camera-label="${img.dataset.cameraImg}"]`); if (label) label.textContent = 'НЕТ СИГНАЛА'; };
     img.src = '/api/cameras/' + img.dataset.cameraImg + '/snapshot?t=' + Date.now();
   });
@@ -124,7 +129,7 @@ function addCamera(location = null) {
   $('[data-camera-webcam]').onclick = openWebcam;
   $('#camera-form').onsubmit = async event => {
     event.preventDefault(); const form = new FormData(event.target); const button = $('button[type=submit]',event.target); button.disabled = true;
-    try { await api('/cameras', {method:'POST',body:JSON.stringify({id:form.get('id'),name:form.get('name'),stream:form.get('stream'),analyze:form.get('analyze') === 'on',zones:[],...position})}); $('#modal').close(); toast('Камера сохранена. Примените настройки, чтобы подключить поток.'); await refresh(); if (location && state.view === 'map') cameraMap.markers.get(form.get('id'))?.openPopup(); }
+    try { await api('/cameras', {method:'POST',body:JSON.stringify({id:form.get('id'),name:form.get('name'),stream:form.get('stream'),analyze:form.get('analyze') === 'on',zones:[],...position})}); $('#modal').close(); toast('Камера сохранена. Примените настройки, чтобы подключить поток.'); await refresh(); if (location && state.view === 'map') openCameraMarker(form.get('id')); }
     catch(error) { $('#form-error').textContent = error.message; } finally { button.disabled = false; }
   };
 }
@@ -136,8 +141,8 @@ function cameraSettings(id) {
   $('#camera-location').onclick = () => openCameraOnMap(id);
   const canvas = $('#zone-canvas'), ctx = canvas.getContext('2d');
   function draw() {
-    ctx.clearRect(0,0,960,540); ctx.fillStyle = '#102139'; ctx.fillRect(0,0,960,540);
-    if (background) ctx.drawImage(background,0,0,960,540); else { ctx.fillStyle = '#a3b9d7'; ctx.font = '18px sans-serif'; ctx.fillText('Нет сигнала камеры',45,260); }
+    ctx.clearRect(0,0,960,540); ctx.fillStyle = '#edf3fb'; ctx.fillRect(0,0,960,540);
+    if (background) ctx.drawImage(background,0,0,960,540); else { ctx.fillStyle = '#516783'; ctx.font = '18px sans-serif'; ctx.fillText('Нет сигнала камеры',45,260); }
     for (const polygon of [...zones.map(z => z.points), points]) {
       if (!polygon.length) continue;
       ctx.beginPath(); polygon.forEach(([x,y],i) => i ? ctx.lineTo(x*960,y*540) : ctx.moveTo(x*960,y*540)); ctx.closePath(); ctx.fillStyle = '#63a9ff3b'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#7bbaff'; ctx.stroke();
@@ -154,8 +159,9 @@ function cameraSettings(id) {
   $('#camera-delete').onclick = () => { modal('Удалить камеру?',`<p>Камера «${escapeHTML(cam.name)}» будет удалена из конфигурации. Записи в журнале сохранятся до окончания срока хранения.</p><div class="form-actions"><button id="confirm-delete" class="danger">Удалить камеру</button></div>`); $('#confirm-delete').onclick = async()=> { try { await api('/cameras/'+id,{method:'DELETE'});$('#modal').close();toast('Камера удалена. Примените настройки.');refresh(); } catch(e){toast(e.message);} }; };
   $('#camera-connection').onclick = () => { modal('Настройки подключения', `<form id="connection-form"><label>Название<input name="name" value="${escapeHTML(cam.name)}" required maxlength="80"></label><label>Новый адрес видеопотока<input name="stream" type="password" required autocomplete="off"></label><label><input type="checkbox" name="analyze" ${cam.analyze ? 'checked' : ''}>Контроль драк и анализ событий</label><p id="form-error" class="error"></p><div class="form-actions"><button type="submit" class="primary">Сохранить</button></div></form>`); $('#connection-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{await api('/cameras/'+id,{method:'PUT',body:JSON.stringify({...cam,name:f.get('name'),stream:f.get('stream'),analyze:f.get('analyze')==='on'})});$('#modal').close();toast('Сохранено. Примените настройки.');refresh();}catch(error){$('#form-error').textContent=error.message;}}; };
 }
-function openEvent(id) {
-  const e = state.events.find(e => e.id === id); if(!e) return;
+async function openEvent(id) {
+  let e = state.events.find(e => e.id === id);
+  if (!e) { try { e = await api('/events/' + id); } catch (error) { toast(error.message); return; } }
   modal(kinds[e.kind] || e.kind, `<div class="detail-media">${e.source === 'demo' ? 'Пример события · видеозапись не создавалась' : `<video controls preload="metadata" src="/api/events/${e.id}/media/clip" aria-label="Видео события"></video>`}</div><p id="media-error" class="error"></p><div class="detail-meta">${pill(cameraName(e.camera))}${pill(dateLabel(e.started),'neutral')}${eventStatus(e)}</div>${help((e.kind === "person" ? "Обнаружение человека в кадре." : "Проверьте запись перед решением. Сигнал не является доказательством нарушения.") + (e.score == null ? "" : " Оценка модели: " + Math.round(e.score*100) + "%."), "О сигнале модели")}<label>Комментарий<textarea id="review-note" maxlength="2000" placeholder="Что произошло на самом деле?">${escapeHTML(e.note)}</textarea></label><div class="form-actions"><button class="secondary" data-review="new">На проверку</button><button class="secondary" data-review="dismissed">Отклонить</button><button class="primary" data-review="confirmed">Подтвердить</button></div>`);
   const video = $('video', $('#modal')); if(video) video.onerror=()=>$('#media-error').textContent='Запись ещё не готова, недоступна или удалена по сроку хранения.';
   $$('[data-review]').forEach(button=>button.onclick=async()=> { try{await api('/events/'+id,{method:'PATCH',body:JSON.stringify({status:button.dataset.review,note:$('#review-note').value})});$('#modal').close();toast('Решение сохранено');refresh();}catch(error){toast(error.message);} });
