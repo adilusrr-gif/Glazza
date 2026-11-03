@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -24,9 +25,16 @@ def make_config(cameras):
         'cameras': {},
     }
     for cam in cameras:
+        source = cam['stream']
+        preset = 'preset-rtsp-generic'
+        if urlsplit(source).scheme in ('http', 'https', 'rtmp', 'rtmps'):
+            # Normalize HTTP MJPEG/HLS/FLV and RTMP to H.264 for NVR recordings.
+            result.setdefault('go2rtc', {'streams': {}})['streams'][cam['id']] = [f'ffmpeg:{source}#video=h264']
+            source = f"rtsp://127.0.0.1:8554/{cam['id']}"
+            preset = 'preset-rtsp-restream'
         result['cameras'][cam['id']] = {
             'enabled': True,
-            'ffmpeg': {'inputs': [{'path': cam['stream'], 'input_args': 'preset-rtsp-generic', 'roles': ['detect', 'record']}]},
+            'ffmpeg': {'inputs': [{'path': source, 'input_args': preset, 'roles': ['detect', 'record']}]},
             'detect': {'enabled': True, 'fps': 5},
             'zones': {z['name']: {'coordinates': ','.join(str(c) for p in z['points'] for c in p), 'objects': ['person'], 'inertia': 3} for z in cam['zones']},
         }

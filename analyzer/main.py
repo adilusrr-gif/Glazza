@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import secrets
@@ -25,13 +26,28 @@ def read_video(path, profile='default'):
                             '-show_entries', 'stream=width,height,avg_frame_rate:format=duration', '-of', 'json', str(path)],
                            capture_output=True, timeout=15, check=True)
     metadata = json.loads(probe.stdout)
-    duration = float(metadata['format']['duration'])
     stream = metadata['streams'][0]
+    duration = float(metadata.get('format', {}).get('duration', 0))
+    # MediaRecorder WebM commonly has no duration or average frame rate.
+    # Inspect bounded packet timestamps, without decoding or trusting client metadata.
+    packet_fps = None
+    if not duration:
+        packets = subprocess.run(['ffprobe', '-v', 'error', '-protocol_whitelist', 'file,pipe',
+                                  '-select_streams', 'v:0', '-read_intervals', '%+121',
+                                  '-show_entries', 'packet=pts_time,duration_time', '-of', 'json', str(path)],
+                                 capture_output=True, timeout=15, check=True)
+        stamps = [(float(p['pts_time']), float(p.get('duration_time', 0)))
+                  for p in json.loads(packets.stdout).get('packets', []) if 'pts_time' in p]
+        if len(stamps) < 2:
+            raise ValueError('Video contains too few timed frames')
+        start = min(p[0] for p in stamps)
+        duration = max(p[0] + p[1] for p in stamps) - start
+        packet_fps = len(stamps) / duration if duration > 0 else 0
     if not 0.1 <= duration <= 120 or stream['width'] * stream['height'] > 3840 * 2160:
         raise ValueError('Use video up to 120 seconds and 3840x2160 pixels')
     numerator, denominator = stream['avg_frame_rate'].split('/')
-    fps = float(numerator) / float(denominator)
-    if not 1 <= fps <= 120:
+    fps = float(numerator) / float(denominator) if float(denominator) and float(numerator) else (packet_fps or 0)
+    if not math.isfinite(fps) or not 1 <= fps <= 120:
         raise ValueError('Unsupported frame rate')
     # Decode in ffmpeg with local-only protocols, bounded output and duration.
     # Scale before crossing the pipe to bound memory even for 4K sources.
@@ -98,8 +114,9 @@ def create_app():
         if not lock.acquire(blocking=False):
             raise HTTPException(429, 'Analyzer busy')
         try:
-            path = jobs / (str(body.job_id) + '.mp4')
-            if not path.is_file() or path.stat().st_size > 200 * 1024 * 1024:
+            path = next((jobs / (str(body.job_id) + suffix) for suffix in ('.mp4', '.webm', '.mkv', '.avi')
+                         if (jobs / (str(body.job_id) + suffix)).is_file()), None)
+            if path is None or path.stat().st_size > 200 * 1024 * 1024:
                 raise HTTPException(404, 'Video missing or too large')
             result = {'detections': [], 'face': {}, 'warnings': [], 'model': '', 'checked': []}
             names = []
@@ -138,7 +155,7 @@ def create_app():
             raise
         except Exception as error:
             log.warning('Analysis failed: %s', type(error).__name__)
-            raise HTTPException(422, 'Cannot analyze video; use MP4/MOV, <=120s, <=4K')
+            raise HTTPException(422, 'Cannot analyze video; use MP4/MOV/WebM/MKV/AVI, <=120s, <=4K')
         finally:
             lock.release()
 

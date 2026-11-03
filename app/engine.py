@@ -154,7 +154,7 @@ class Engine:
         self.store.execute('DELETE FROM sessions WHERE expires < ?', (now,))
         # A separate media retention window bounds uploads and downloaded clips.
         for job in self.store.rows("SELECT id,file FROM jobs WHERE updated < ? AND state IN ('succeeded','failed') AND file IS NOT NULL", (now - 86400,)):
-            (self.settings.data / 'jobs' / f"{job['id']}.mp4").unlink(missing_ok=True)
+            (self.settings.data / 'jobs' / job['file']).unlink(missing_ok=True)
             self.store.execute('UPDATE jobs SET file=NULL WHERE id=?', (job['id'],))
         cutoff = now - self.settings.retention_days * 86400
         self.store.execute("DELETE FROM jobs WHERE updated < ? AND state IN ('succeeded','failed')", (cutoff,))
@@ -220,7 +220,7 @@ class Engine:
             await asyncio.sleep(1)
 
     async def run_job(self, job):
-        path = self.settings.data / 'jobs' / (job['id'] + '.mp4')
+        path = self.settings.data / 'jobs' / (job.get('file') or (job['id'] + '.mp4'))
         try:
             if not path.exists():
                 if not job['source_id'] and job.get('clip_start') is None:

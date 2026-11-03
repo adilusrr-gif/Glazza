@@ -37,6 +37,10 @@ class Store:
             for name in ('clip_start', 'clip_end'):
                 if name not in columns:
                     db.execute(f'ALTER TABLE jobs ADD COLUMN {name} REAL')
+            camera_columns = {row['name'] for row in db.execute('PRAGMA table_info(cameras)')}
+            for name in ('latitude', 'longitude'):
+                if name not in camera_columns:
+                    db.execute(f'ALTER TABLE cameras ADD COLUMN {name} REAL')
         self.path.chmod(0o600)
 
     @contextlib.contextmanager

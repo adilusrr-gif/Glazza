@@ -1,4 +1,5 @@
 import math
+import ipaddress
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -26,7 +27,18 @@ class Zone(BaseModel):
         return points
 
 
-class Camera(BaseModel):
+class CameraLocation(BaseModel):
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+
+    @model_validator(mode='after')
+    def paired_coordinates(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError('Укажите широту и долготу вместе')
+        return self
+
+
+class Camera(CameraLocation):
     id: str = Field(pattern=r'^[a-z][a-z0-9_]{1,39}$')
     name: str = Field(min_length=1, max_length=80)
     stream: str = Field(min_length=1, max_length=2048)
@@ -41,8 +53,14 @@ class Camera(BaseModel):
             port = parsed.port
         except ValueError as error:
             raise ValueError('Некорректный адрес камеры') from error
-        if parsed.scheme not in ('rtsp', 'rtsps') or not parsed.hostname or any(c.isspace() or c in '{}\x00' for c in value):
-            raise ValueError('Нужен RTSP/RTSPS адрес без пробелов и фигурных скобок')
+        if parsed.scheme not in ('rtsp', 'rtsps', 'http', 'https', 'rtmp', 'rtmps') or not parsed.hostname or parsed.fragment or any(c.isspace() or ord(c) < 32 or c in '{}#' for c in value):
+            raise ValueError('Укажите RTSP, RTSPS, HTTP(S) или RTMP(S) адрес видеопотока без пробелов и фрагментов #')
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            address = None
+        if address and (address.is_link_local or address.is_multicast or address.is_unspecified):
+            raise ValueError('Нужен адрес камеры в локальной сети или интернете')
         if port is not None and not 1 <= port <= 65535:
             raise ValueError('Некорректный порт')
         return value

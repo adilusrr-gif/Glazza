@@ -16,7 +16,7 @@ services:
       GLAZZA_SECURE_COOKIE: ${GLAZZA_SECURE_COOKIE:-false}
       GLAZZA_RETENTION_DAYS: ${GLAZZA_RETENTION_DAYS:-30}
     ports:
-      - "${GLAZZA_BIND:-127.0.0.1}:8080:8080"
+      - "${GLAZZA_BIND:-127.0.0.1}:${GLAZZA_PORT:-8080}:8080"
     volumes:
       - ${GLAZZA_DATA_DIR:-./data}:/data
       - ./config:/config

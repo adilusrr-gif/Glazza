@@ -7,6 +7,7 @@ import re
 import secrets
 import time
 import uuid
+from typing import Literal
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
@@ -17,8 +18,9 @@ from fastapi.staticfiles import StaticFiles
 from .config import Settings
 from .engine import Engine, seed_demo
 from .frigate import atomic_config, validate_names
-from .schemas import Camera, Login, Review, ZoneUpdate
+from .schemas import Camera, CameraLocation, Login, Review, ZoneUpdate
 from .store import Store, password_hash, password_matches
+from .video import MIME_TYPES, video_suffix
 
 STATIC = Path(__file__).parent / 'static'
 
@@ -64,7 +66,7 @@ def create_app(settings=None, background=True):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data: https://tile.openstreetmap.org; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         if request.url.path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store'
         return response
@@ -152,8 +154,8 @@ def create_app(settings=None, background=True):
         if store.rows('SELECT id FROM cameras WHERE id=?', (body.id,)):
             raise HTTPException(409, 'Такой идентификатор камеры уже существует')
         check_camera_names(body.model_dump())
-        store.execute('INSERT INTO cameras(id,name,stream,zones,analyze) VALUES(?,?,?,?,?)',
-                      (body.id, body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze)))
+        store.execute('INSERT INTO cameras(id,name,stream,zones,analyze,latitude,longitude) VALUES(?,?,?,?,?,?,?)',
+                      (body.id, body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze), body.latitude, body.longitude))
         store.audit(user['username'], 'camera.create', body.id)
         return {'id': body.id, 'apply_required': True}
 
@@ -163,12 +165,25 @@ def create_app(settings=None, background=True):
         if body.id != camera_id:
             raise HTTPException(422, 'Идентификатор нельзя изменить')
         check_camera_names(body.model_dump())
-        changed = store.execute('UPDATE cameras SET name=?,stream=?,zones=?,analyze=? WHERE id=?',
-                                (body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze), camera_id))
+        # Keep locations when older clients update camera connection settings.
+        location_fields = {'latitude', 'longitude'} & body.model_fields_set
+        location_sql = ',latitude=?,longitude=?' if location_fields else ''
+        location_args = (body.latitude, body.longitude) if location_fields else ()
+        changed = store.execute('UPDATE cameras SET name=?,stream=?,zones=?,analyze=?' + location_sql + ' WHERE id=?',
+                                (body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze), *location_args, camera_id))
         if not changed:
             raise HTTPException(404, 'Камера не найдена')
         store.audit(user['username'], 'camera.update', camera_id)
         return {'apply_required': True}
+
+    @app.put('/api/cameras/{camera_id}/location')
+    def update_camera_location(camera_id: str, body: CameraLocation, user=Depends(authenticated)):
+        writable()
+        if not store.execute('UPDATE cameras SET latitude=?,longitude=? WHERE id=?',
+                             (body.latitude, body.longitude, camera_id)):
+            raise HTTPException(404, 'Камера не найдена')
+        store.audit(user['username'], 'camera.location', camera_id)
+        return {'id': camera_id, **body.model_dump(), 'apply_required': False}
 
     @app.put('/api/cameras/{camera_id}/zones')
     def update_zones(camera_id: str, body: ZoneUpdate, user=Depends(authenticated)):
@@ -230,15 +245,15 @@ def create_app(settings=None, background=True):
         return items
 
     @app.post('/api/jobs/upload', status_code=202)
-    async def upload(request: Request, user=Depends(authenticated)):
+    async def upload(request: Request, source: Literal['upload', 'webcam'] = 'upload', user=Depends(authenticated)):
         writable()
         if store.rows("SELECT count(*) AS n FROM jobs WHERE state IN ('queued','running')")[0]['n'] >= 100:
             raise HTTPException(429, 'Очередь заполнена')
         # Raw request streaming avoids buffering multipart uploads before enforcing the limit.
-        if request.headers.get('content-type', '').split(';')[0] not in ('video/mp4', 'video/quicktime', 'application/octet-stream'):
-            raise HTTPException(415, 'Загрузите MP4 или MOV')
+        if request.headers.get('content-type', '').split(';')[0] not in (*MIME_TYPES.values(), 'video/quicktime', 'video/avi', 'application/octet-stream'):
+            raise HTTPException(415, 'Загрузите MP4, MOV, WebM, MKV или AVI')
         job_id = str(uuid.uuid4())
-        path = settings.data / 'jobs' / (job_id + '.mp4')
+        path = settings.data / 'jobs' / (job_id + '.part')
         size = 0
         try:
             with path.open('wb') as handle:
@@ -250,11 +265,16 @@ def create_app(settings=None, background=True):
             if size < 16:
                 raise HTTPException(422, 'Видео пустое или повреждено')
             with path.open('rb') as handle:
-                header = handle.read(32)
-            if b'ftyp' not in header:
-                raise HTTPException(415, 'Поддерживаются контейнеры MP4 и MOV')
+                header = handle.read(4096)
+            try:
+                suffix = video_suffix(header)
+            except ValueError as error:
+                raise HTTPException(415, str(error))
+            destination = path.with_suffix(suffix)
+            path.rename(destination)
+            path = destination
             store.execute('INSERT INTO jobs(id,camera,state,created,updated,file) VALUES(?,?,?,?,?,?)',
-                          (job_id, 'upload', 'queued', time.time(), time.time(), path.name))
+                          (job_id, source, 'queued', time.time(), time.time(), path.name))
             store.audit(user['username'], 'video.upload', job_id)
         except BaseException:
             path.unlink(missing_ok=True)
@@ -276,7 +296,7 @@ def create_app(settings=None, background=True):
         path = settings.data / 'jobs' / rows[0]['file']
         if not path.is_file():
             raise HTTPException(404, 'Видео недоступно')
-        return FileResponse(path, media_type='video/mp4')
+        return FileResponse(path, media_type=MIME_TYPES.get(path.suffix, 'video/mp4'))
 
     @app.get('/api/cameras/{camera_id}/snapshot')
     async def snapshot(camera_id: str, user=Depends(authenticated)):
