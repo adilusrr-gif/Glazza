@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   product:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,11 +18,12 @@ jobs:
       - run: node --check app/static/app.js
       - run: pip install playwright==1.51.0 && python -m playwright install --with-deps chromium
       - run: python tests/browser_smoke.py
+      - run: python tests/browser_admission.py
       - run: python scripts/setup.py --demo
       - run: docker compose --profile nvr --profile ai config --quiet
       - run: docker build -t glazza:test .
   fight_model:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -33,3 +34,5 @@ jobs:
       - run: pip install -r analyzer/requirements.txt
       - run: python scripts/models.py fight
       - run: python tests/real_fight_smoke.py
+      - run: python scripts/models.py identity
+      - run: PYTHONPATH=. python tests/real_identity_smoke.py

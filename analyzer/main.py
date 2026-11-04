@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from .models import FaceModel, VadClipModel
 from .fight import FightModel
+from .identity import IdentityModel, register as register_identity
 
 log = logging.getLogger('glazza.analyzer')
 
@@ -76,7 +77,7 @@ def create_app():
 
     @asynccontextmanager
     async def lifespan(app):
-        for name, factory in [('fight', FightModel), ('vadclip', VadClipModel), ('face', FaceModel)]:
+        for name, factory in [('fight', FightModel), ('vadclip', VadClipModel), ('face', FaceModel), ('identity', IdentityModel)]:
             try:
                 models[name] = await asyncio.to_thread(factory, root)
                 statuses.append({'id': name, 'state': 'ready'})
@@ -95,6 +96,8 @@ def create_app():
         if not value or not secrets.compare_digest(value, key):
             raise HTTPException(401)
 
+    register_identity(app, models, authorize)
+
     @app.get('/health')
     def health(x_worker_key: str | None = Header(default=None)):
         authorize(x_worker_key)
@@ -107,7 +110,7 @@ def create_app():
     @app.post('/analyze')
     def analyze(body: AnalysisRequest, x_worker_key: str | None = Header(default=None)):
         authorize(x_worker_key)
-        if not models:
+        if not ({'fight','vadclip','face'} & models.keys()):
             raise HTTPException(503, 'No models loaded')
         if body.mode == 'fight' and not ({'fight', 'vadclip'} & models.keys()):
             raise HTTPException(503, 'Fight model is not loaded')

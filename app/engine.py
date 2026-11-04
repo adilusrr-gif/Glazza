@@ -9,6 +9,7 @@ import time
 import uuid
 
 import httpx
+from . import admission
 
 log = logging.getLogger('glazza.engine')
 SAFE_ID = re.compile(r'^[a-zA-Z0-9_.-]{1,120}$')
@@ -17,6 +18,7 @@ SAFE_ID = re.compile(r'^[a-zA-Z0-9_.-]{1,120}$')
 class Engine:
     def __init__(self, store, settings):
         self.store, self.settings = store, settings
+        admission.initialize(store)
         self.health = {'frigate': 'starting', 'last_sync': None, 'error': None, 'analyzer': {'state': 'unavailable', 'models': []}}
         self.health['fight_monitor'] = {'state': 'waiting', 'busy_cameras': [], 'skipped_windows': 0}
         # Service-to-service traffic must not leave the Docker network via ambient proxies.
@@ -26,7 +28,16 @@ class Engine:
 
     async def start(self):
         self.store.execute("UPDATE jobs SET state='queued', updated=? WHERE state='running'", (time.time(),))
-        self.tasks = [asyncio.create_task(self.poll()), asyncio.create_task(self.work()), asyncio.create_task(self.poll_camera_signals())]
+        self.tasks = [asyncio.create_task(self.poll()), asyncio.create_task(self.work()), asyncio.create_task(self.poll_camera_signals()), asyncio.create_task(self.admission_work())]
+
+    async def admission_work(self):
+        while True:
+            if not self.settings.demo:
+                try:
+                    await admission.process(self)
+                except Exception as error:
+                    log.warning('Admission processing failed: %s', type(error).__name__)
+            await asyncio.sleep(5)
 
     async def sync_camera_signals(self):
         response = await self.client.get(self.settings.frigate_url + '/api/stats')
@@ -93,6 +104,7 @@ class Engine:
             kind = 'intrusion' if restricted.intersection(entered) else 'person'
             event_id = self.store.event(source='frigate', source_id=source_id, camera=camera['id'], kind=kind,
                                        score=score, started=started, ended=ended, details={'zones': entered, 'has_clip': bool(event.get('has_clip')), 'has_snapshot': bool(event.get('has_snapshot'))})
+            admission.ingest(self.store, event_id, source_id, camera['id'], entered, started)
             # Record once per tracked object, including repeated /events polling and restarts.
             if camera['analyze'] and ended and event.get('has_clip'):
                 job_id = str(uuid.UUID(hashlib.md5(('frigate:' + source_id).encode()).hexdigest()))
@@ -203,6 +215,8 @@ class Engine:
             (self.settings.data / 'jobs' / job['file']).unlink(missing_ok=True)
             self.store.execute('UPDATE jobs SET file=NULL WHERE id=?', (job['id'],))
         cutoff = now - self.settings.retention_days * 86400
+        self.store.execute('DELETE FROM admission_entries WHERE at < ?', (cutoff,))
+        self.store.execute('UPDATE admission_people SET photo=NULL,embedding=NULL,model=NULL WHERE valid_until < ?', (now - 86400,))
         self.store.execute("DELETE FROM jobs WHERE updated < ? AND state IN ('succeeded','failed')", (cutoff,))
         self.store.execute('DELETE FROM events WHERE started < ? AND ended IS NOT NULL', (cutoff,))
         self.store.execute('DELETE FROM audit WHERE at < ?', (cutoff,))
@@ -255,7 +269,7 @@ class Engine:
     async def work(self):
         while True:
             try:
-                available = self.health['analyzer'].get('state') == 'ready'
+                available = self.health['analyzer'].get('state') == 'ready' and any(m.get('state') == 'ready' and m.get('id') in ('fight','face','vadclip') for m in self.health['analyzer'].get('models', []))
                 rows = self.store.rows("SELECT * FROM jobs WHERE state='queued' AND updated < ? ORDER BY (clip_start IS NOT NULL) DESC, created LIMIT 1", (time.time() - 2,)) if available else []
                 if rows:
                     job = rows[0]

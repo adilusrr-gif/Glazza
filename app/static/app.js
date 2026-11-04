@@ -2,7 +2,7 @@
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const titles = {overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
+const titles = {admission:'Допуск и посетители',overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
 const kinds = {intrusion:'Вход в запретную зону', fight:'Возможная драка', theft:'Возможная кража', person:'Человек в кадре'};
 const symbols = {intrusion:'◇', fight:'ϟ', theft:'◈', person:'♙'};
 const statuses = {new:'Не проверено', confirmed:'Подтверждено', dismissed:'Отклонено'};
@@ -40,8 +40,8 @@ async function refresh() {
   if (!state.session || refreshing) return;
   refreshing = true;
   try {
-    const [overview, cameras, events, jobs, cameraStatus] = await Promise.all([api('/overview'), api('/cameras'), api('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : '')), api('/jobs'), api('/cameras/status')]);
-    Object.assign(state, {overview, cameras, events, jobs, cameraStatus});
+    const [overview, cameras, events, jobs, cameraStatus, admission] = await Promise.all([api('/overview'), api('/cameras'), api('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : '')), api('/jobs'), api('/cameras/status'), api('/admission')]);
+    Object.assign(state, {overview, cameras, events, jobs, cameraStatus, admission});
     $('#nav-count').textContent = overview.pending;
     $('#sync-status').textContent = overview.health.frigate === 'online' ? 'NVR подключён' : 'Нет связи с NVR';
     setHelp('#sync-status', overview.health.last_sync ? 'Последняя синхронизация: ' + timeLabel(overview.health.last_sync) : 'Frigate ещё не подключён');
@@ -57,8 +57,12 @@ function render() {
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === state.view));
   $('#breadcrumb').textContent = titles[state.view];
   if (state.view !== 'map') disposeCameraMap();
-  const methods = {map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
+  const methods = {admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
   methods[state.view]();
+  if (state.admission?.pending && state.view !== 'admission') {
+    $('#content').insertAdjacentHTML('afterbegin', `<div class="warning-box" role="alert">Допуск не подтверждён: ${state.admission.pending} <button class="secondary" id="admission-alert">Проверить входящих</button></div>`);
+    $('#admission-alert').onclick=()=>navigate('admission');
+  }
   $$('.fight-alert', $('#content')).forEach(node => node.remove());
   if (state.overview.pending_fights > 0) {
     $('#content').insertAdjacentHTML('afterbegin', `<div class="fight-alert" role="alert"><div><strong>ϟ Возможная драка · ${state.overview.pending_fights}</strong>${help("Откройте запись и проверьте происходящее.", "Действия при сигнале драки")}</div><button class="secondary" id="open-fights">Проверить сигналы</button></div>`);

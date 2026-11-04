@@ -100,9 +100,29 @@ def download_fight(root):
     print('VD-MIL installed. Restart analyzer; check the fight model status in Glazza.')
 
 
+def download_identity(root):
+    artifacts=json.loads((Path(__file__).resolve().parents[1]/'analyzer/identity_artifacts.json').read_text())
+    target=root/'identity'
+    target.mkdir(exist_ok=True)
+    for name,item in artifacts['files'].items():
+        path=target/name
+        if path.exists() and digest(path)==item['sha256']: continue
+        temporary=path.with_suffix('.part')
+        try:
+            print('Downloading '+name,flush=True)
+            with urllib.request.urlopen(item['url'],timeout=90) as source, temporary.open('wb') as out:
+                shutil.copyfileobj(source,out)
+                out.flush();os.fsync(out.fileno())
+            if digest(temporary)!=item['sha256']: raise RuntimeError('Identity checksum mismatch')
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    print('YuNet + SFace installed. Restart analyzer.')
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['face', 'fight', 'vadclip'])
+    parser.add_argument('action', choices=['face', 'fight', 'identity', 'vadclip'])
     parser.add_argument('--directory', default='models')
     parser.add_argument('--checkpoint', help='Official UCF-Crime .pth file, obtained from upstream README')
     args = parser.parse_args()
@@ -110,6 +130,8 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     if args.action == 'face':
         download_face(root)
+    elif args.action == 'identity':
+        download_identity(root)
     elif args.action == 'fight':
         download_fight(root)
     else:

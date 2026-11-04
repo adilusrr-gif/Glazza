@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .admission import register as register_admission
 from .config import Settings
 from .engine import Engine, seed_demo
 from .frigate import atomic_config, validate_names
@@ -97,6 +98,8 @@ def create_app(settings=None, background=True):
             validate_names([*cameras, candidate])
         except ValueError as error:
             raise HTTPException(422, str(error))
+
+    register_admission(app, store, engine, authenticated, writable)
 
     @app.get('/healthz')
     def health():
@@ -209,6 +212,7 @@ def create_app(settings=None, background=True):
         if not store.execute('DELETE FROM cameras WHERE id=?', (camera_id,)):
             raise HTTPException(404, 'Камера не найдена')
         store.execute('UPDATE events SET ended=? WHERE camera=? AND ended IS NULL', (time.time(), camera_id))
+        store.execute('DELETE FROM admission_entrances WHERE camera=?', (camera_id,))
         store.audit(user['username'], 'camera.delete', camera_id)
         return {'apply_required': True}
 
