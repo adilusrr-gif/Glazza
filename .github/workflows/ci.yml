@@ -16,6 +16,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
       - run: node --check app/static/app.js
+      - run: node --check app/static/admission.js
       - run: pip install playwright==1.51.0 && python -m playwright install --with-deps chromium
       - run: python tests/browser_smoke.py
       - run: python tests/browser_admission.py

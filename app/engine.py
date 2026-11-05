@@ -124,15 +124,19 @@ class Engine:
             ended = event.get('end_time')
             score = event.get('data', {}).get('top_score', event.get('top_score'))
             entered = event.get('zones', event.get('entered_zones', [])) or []
+            previous = self.store.rows("SELECT site_id FROM events WHERE source='frigate' AND source_id=? ORDER BY started LIMIT 1", (source_id,))
+            site_id = previous[0]['site_id'] if previous else camera['site_id']
             restricted = {z['name'] for z in camera['zones'] if z['restricted']}
-            kind = 'intrusion' if restricted.intersection(entered) and camera_enabled(self.store,camera['id'],'intrusion') else 'person'
+            kind = 'intrusion' if restricted.intersection(entered) and 'intrusion' in modules_for(self.store,site_id) else 'person'
             event_id = self.store.event(source='frigate', source_id=source_id, camera=camera['id'], kind=kind,
-                                       score=score, started=started, ended=ended, details={'zones': entered, 'has_clip': bool(event.get('has_clip')), 'has_snapshot': bool(event.get('has_snapshot'))})
-            admission.ingest(self.store, event_id, source_id, camera['id'], entered, started)
+                                       score=score, started=started, ended=ended, details={'zones': entered, 'has_clip': bool(event.get('has_clip')), 'has_snapshot': bool(event.get('has_snapshot'))}, site_id=site_id)
+            if ended is not None:
+                self.store.execute("UPDATE events SET ended=? WHERE source='frigate' AND source_id=?", (ended,source_id))
+            admission.ingest(self.store, event_id, source_id, camera['id'], entered, started, site_id=site_id)
             # Record once per tracked object, including repeated /events polling and restarts.
-            if camera['analyze'] and ended and event.get('has_clip') and modules_for(self.store,camera['site_id']) & {'fight','theft','face'}:
+            if camera['analyze'] and ended and event.get('has_clip') and modules_for(self.store,site_id) & {'fight','theft','face'}:
                 job_id = str(uuid.UUID(hashlib.md5(('frigate:' + source_id).encode()).hexdigest()))
-                self.store.enqueue(id=job_id,event_id=event_id,source_id=source_id,camera=camera['id'],site_id=camera['site_id'])
+                self.store.enqueue(id=job_id,event_id=event_id,source_id=source_id,camera=camera['id'],site_id=site_id)
 
     def enqueue_completed(self):
         # Events are the durable overflow buffer: retry after capacity frees, even
@@ -267,7 +271,9 @@ class Engine:
         self.store.execute('DELETE FROM admission_entries WHERE at < ?', (cutoff,))
         self.store.execute('UPDATE admission_people SET photo=NULL,embedding=NULL,model=NULL WHERE valid_until < ?', (now - 86400,))
         self.store.execute("DELETE FROM jobs WHERE updated < ? AND state IN ('succeeded','failed')", (cutoff,))
-        self.store.execute('DELETE FROM events WHERE started < ? AND ended IS NOT NULL', (cutoff,))
+        # At most 100 active jobs may pin their capture provenance beyond retention.
+        self.store.execute("""DELETE FROM events WHERE started < ? AND ended IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM jobs WHERE event_id=events.id AND state IN ('queued','running'))""", (cutoff,))
         self.store.execute('DELETE FROM audit WHERE at < ?', (cutoff,))
 
     async def download_clip(self, job, path):
@@ -303,6 +309,8 @@ class Engine:
                 continue
             start = job.get('clip_start')
             origin = self.store.rows('SELECT started,ended FROM events WHERE id=?', (job.get('event_id'),))
+            if start is None and job.get('event_id') and not origin:
+                raise ValueError('Capture provenance is unavailable')
             if start is not None:
                 base, duration = start, job['clip_end'] - start
             elif origin:
@@ -314,9 +322,14 @@ class Engine:
             started = base + detection.get('start_seconds', 0)
             ended = base + detection.get('end_seconds', max(duration, detection.get('start_seconds', 0)))
             # Overlapping recording windows should not flood the operator with the same signal.
-            if start is not None and self.store.rows("SELECT id FROM events WHERE source='analysis' AND camera=? AND kind=? AND started BETWEEN ? AND ? LIMIT 1",
-                                                    (job['camera'], detection['kind'], started - 30, started + 30)):
-                continue
+            if start is not None:
+                duplicate = self.store.rows("""SELECT id FROM events WHERE source='analysis' AND camera=? AND site_id=? AND kind=?
+                    AND json_extract(details,'$.rolling')=1 AND started < ? AND ended > ? LIMIT 1""",
+                    (job['camera'],job.get('site_id') or camera_site(self.store,job['camera']),detection['kind'],ended,started))
+                if duplicate:
+                    result.setdefault('deduplicated', []).append({'kind':detection['kind'],'event_id':duplicate[0]['id'],
+                                                                 'started':started,'ended':ended})
+                    continue
             self.store.event(source='analysis', source_id=job['id'] + ':' + detection['kind'], camera=job['camera'],
                              kind=detection['kind'], score=detection['score'], started=started, ended=ended,
                              details={'job_id': job['id'], 'origin_event': job.get('event_id'), 'model': detection.get('model', result.get('model')), 'label': detection.get('label'),
@@ -324,13 +337,30 @@ class Engine:
                                       'rolling': start is not None, 'review_required': True}, site_id=job.get('site_id'))
         self.store.execute("UPDATE jobs SET state='succeeded',result=?,error=NULL,updated=? WHERE id=?", (json.dumps(result, ensure_ascii=False), time.time(), job['id']))
 
+    def job_modules(self, job):
+        requested = modules_for(self.store,job.get('site_id') or camera_site(self.store,job['camera'])) & {'fight','theft','face'}
+        return requested & {'fight'} if job.get('clip_start') is not None else requested
+
+    def models_ready(self, job):
+        analyzer = self.health['analyzer']
+        ready = {m['id'] for m in analyzer.get('models', []) if m.get('state') == 'ready'}
+        requested = self.job_modules(job)
+        required = {'theft':{'vadclip'}, 'fight':{'fight','vadclip'}, 'face':{'face'}}
+        # Existing partial-analysis mode remains explicit in analyzer warnings.
+        # An unrelated ready model must never consume a single-module job.
+        return analyzer.get('state') == 'ready' and any(ready & required[m] for m in requested)
+
     async def work(self):
         while True:
             try:
-                available = self.health['analyzer'].get('state') == 'ready' and any(m.get('state') == 'ready' and m.get('id') in ('fight','face','vadclip') for m in self.health['analyzer'].get('models', []))
-                rows = self.store.rows("SELECT * FROM jobs WHERE state='queued' AND updated < ? ORDER BY (clip_start IS NOT NULL) DESC, created LIMIT 1", (time.time() - 2,)) if available else []
-                if rows:
-                    job = rows[0]
+                rows = self.store.rows("SELECT * FROM jobs WHERE state='queued' AND updated < ? ORDER BY (clip_start IS NOT NULL) DESC, created LIMIT 100", (time.time() - 2,))
+                for row in rows:
+                    if not self.job_modules(row):
+                        self.store.execute("UPDATE jobs SET state='failed',error=?,updated=? WHERE id=? AND state='queued'",
+                                           ('Модули анализа задания отключены. Включите модуль перед повтором.',time.time(),row['id']))
+                rows = [row for row in rows if self.job_modules(row)]
+                job = next((row for row in rows if self.models_ready(row)), None)
+                if job:
                     if self.store.execute("UPDATE jobs SET state='running',attempts=attempts+1,updated=? WHERE id=? AND state='queued'", (time.time(), job['id'])):
                         await self.run_job(job)
             except Exception as exc:
@@ -350,6 +380,10 @@ class Engine:
             response.raise_for_status()
             self.apply_result(job, response.json())
         except Exception as exc:
+            if isinstance(exc, httpx.TransportError) or (isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (429,503)):
+                self.store.execute("UPDATE jobs SET state='queued',attempts=MAX(0,attempts-1),error=?,updated=? WHERE id=?",
+                                   ('Сервис временно недоступен или занят. Ожидаем повтор.',time.time()+30,job['id']))
+                return
             attempts = job['attempts'] + 1
             state = 'failed' if attempts >= 3 else 'queued'
             self.store.execute('UPDATE jobs SET state=?,error=?,updated=? WHERE id=?',

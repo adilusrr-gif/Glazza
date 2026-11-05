@@ -49,7 +49,7 @@ async function refresh() {
     renderAlerts();
     // Preserve filters and interaction focus; refresh tables only when idle outside forms.
     if (state.view === 'map' && !$('#modal').open) render();
-    else if (!helpAnchor && !uploadBusy && !$('#video-file')?.files.length && !$('#modal').open && !['SELECT','INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) render();
+    else if (!helpAnchor && !uploadBusy && !$('#video-file')?.files.length && !$('#modal').open && !document.activeElement?.closest('.fight-alert, .admission-alert') && !['SELECT','INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) render();
   } catch (error) { if (state.session) toast(error.message); }
   finally { refreshing = false; }
 }
@@ -67,14 +67,29 @@ function render() {
 }
 function renderAlerts() {
   if (!state.overview) return;
-  $$('.admission-alert, .fight-alert', $('#content')).forEach(node => node.remove());
+  let restoreFocus = false;
+  const remove = selector => {
+    const node = $(selector, $('#content'));
+    if (node?.contains(document.activeElement)) restoreFocus = true;
+    node?.remove();
+  };
   if (state.admission?.pending && state.view !== 'admission') {
-    $('#content').insertAdjacentHTML('afterbegin', `<div class="warning-box admission-alert" role="alert">Допуск не подтверждён: ${state.admission.pending} <button class="secondary" id="admission-alert">Проверить входящих</button></div>`);
-    $('#admission-alert').onclick=()=>navigate('admission');
-  }
+    if (!$('.admission-alert', $('#content'))) {
+      $('#content').insertAdjacentHTML('afterbegin', `<div class="warning-box admission-alert" role="alert">Допуск не подтверждён: <span class="admission-alert-count"></span> <button class="secondary" id="admission-alert">Проверить входящих</button></div>`);
+      $('#admission-alert').onclick=()=>navigate('admission');
+    }
+    $('.admission-alert-count').textContent = state.admission.pending;
+  } else remove('.admission-alert');
   if (state.overview.pending_fights > 0) {
-    $('#content').insertAdjacentHTML('afterbegin', `<div class="fight-alert" role="alert"><div><strong>ϟ Возможная драка · ${state.overview.pending_fights}</strong>${help("Откройте запись и проверьте происходящее.", "Действия при сигнале драки")}</div><button class="secondary" id="open-fights">Проверить сигналы</button></div>`);
-    $('#open-fights').onclick = () => {filters.kind='fight';filters.status='new';filters.camera='';navigate('events');};
+    if (!$('.fight-alert', $('#content'))) {
+      $('#content').insertAdjacentHTML('afterbegin', `<div class="fight-alert" role="alert"><div><strong>ϟ Возможная драка · <span class="fight-alert-count"></span></strong>${help("Откройте запись и проверьте происходящее.", "Действия при сигнале драки")}</div><button class="secondary" id="open-fights">Проверить сигналы</button></div>`);
+      $('#open-fights').onclick = () => {filters.kind='fight';filters.status='new';filters.camera='';navigate('events');};
+    }
+    $('.fight-alert-count').textContent = state.overview.pending_fights;
+  } else remove('.fight-alert');
+  if (restoreFocus) {
+    $('#breadcrumb').tabIndex = -1;
+    $('#breadcrumb').focus();
   }
 }
 function cameraCard(camera) {

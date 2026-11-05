@@ -96,7 +96,8 @@ def test_rolling_download_uses_recording_range_and_fight_mode(logged, app, camer
     assert logged.get('/api/events/' + event['id'] + '/media/clip').status_code == 200
     assert logged.get('/api/overview').json()['pending_fights'] == 1
     logged.patch('/api/events/' + event['id'], json={'status': 'dismissed', 'note': 'Игра'})
-    job['clip_start'] = 106
+    job = {**job, 'id': str(uuid.uuid4()), 'clip_start': 103, 'clip_end': 115}
+    app.state.store.enqueue(id=job['id'],camera=job['camera'],site_id='default',clip_start=103,clip_end=115)
     engine.apply_result(job, {'detections': [{'kind': 'fight', 'score': .95, 'start_seconds': 1, 'end_seconds': 3}]})
     assert len(app.state.store.events()) == 1
     assert app.state.store.events()[0]['status'] == 'dismissed'

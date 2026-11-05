@@ -43,6 +43,7 @@ class Store:
                 if name not in columns:
                     db.execute(f'ALTER TABLE jobs ADD COLUMN {name} {definition}')
             db.execute('CREATE INDEX IF NOT EXISTS job_source ON jobs(source_id)')
+            db.execute('CREATE INDEX IF NOT EXISTS job_origin_state ON jobs(event_id,state)')
             camera_columns = {row['name'] for row in db.execute('PRAGMA table_info(cameras)')}
             for name in ('latitude', 'longitude'):
                 if name not in camera_columns:

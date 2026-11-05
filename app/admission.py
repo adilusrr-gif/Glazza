@@ -8,7 +8,7 @@ from typing import Literal
 
 from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, model_validator
-from .platform import check_site, camera_site, camera_enabled
+from .platform import check_site, camera_site, modules_for
 
 MODEL = 'opencv-sface-2021dec'
 
@@ -88,13 +88,14 @@ def candidate(store, vector, at, site_id='default'):
     return identifier, score, 'candidate_requires_review'
 
 
-def ingest(store, event_id, source_id, camera, zones, at):
+def ingest(store, event_id, source_id, camera, zones, at, site_id=None):
     rules = store.rows('SELECT * FROM admission_entrances WHERE camera=? AND enabled=1', (camera,))
-    if not camera_enabled(store,camera,'admission') or not rules or rules[0]['zone'] not in zones:
+    site_id = site_id or camera_site(store,camera)
+    if 'admission' not in modules_for(store,site_id) or not rules or rules[0]['zone'] not in zones:
         return
     r = rules[0]
     store.execute('INSERT OR IGNORE INTO admission_entries(id,event_id,source_id,camera,direction,at,site_id) VALUES(?,?,?,?,?,?,?)',
-                  (str(uuid.uuid4()),event_id,source_id,camera,r['direction'],at,camera_site(store,camera)))
+                  (str(uuid.uuid4()),event_id,source_id,camera,r['direction'],at,site_id))
 
 
 async def process(engine):
