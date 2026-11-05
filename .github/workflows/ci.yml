@@ -20,6 +20,7 @@ jobs:
       - run: python tests/browser_smoke.py
       - run: python tests/browser_admission.py
       - run: python tests/browser_platform.py
+      - run: PYTHONPATH=. python tests/browser_audit_regressions.py
       - run: python scripts/setup.py --demo
       - run: docker compose --profile nvr --profile ai config --quiet
       - run: docker build -t glazza:test .
@@ -31,9 +32,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12', cache: pip}
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg libgl1
-      - run: pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r analyzer/requirements.txt
       - run: python scripts/models.py fight
       - run: python tests/real_fight_smoke.py
       - run: python scripts/models.py identity
       - run: PYTHONPATH=. python tests/real_identity_smoke.py
+      - run: python scripts/models.py face
+      - run: python tests/real_model_smoke.py

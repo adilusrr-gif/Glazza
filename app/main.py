@@ -149,7 +149,7 @@ def create_app(settings=None, background=True):
         return {'mode':mode,'site_id':site_id,'cameras':len(store.cameras(site_id=site_id)),'counts':counts,
                 'pending_fights':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='fight'"+scope,args)[0]['n'],
                 'pending':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind!='person'"+scope,args)[0]['n'],
-                'health':engine.health,'jobs':store.rows('SELECT state,count(*) AS n FROM jobs WHERE 1=1'+scope+' GROUP BY state',args),
+                'health':engine.health_snapshot(),'jobs':store.rows('SELECT state,count(*) AS n FROM jobs WHERE 1=1'+scope+' GROUP BY state',args),
                 'retention_days':settings.retention_days}
 
     @app.get('/api/cameras')
@@ -306,8 +306,8 @@ def create_app(settings=None, background=True):
             destination = path.with_suffix(suffix)
             path.rename(destination)
             path = destination
-            store.execute('INSERT INTO jobs(id,camera,state,created,updated,file,site_id) VALUES(?,?,?,?,?,?,?)',
-                          (job_id, source, 'queued', time.time(), time.time(), path.name, site_id))
+            if not store.enqueue(id=job_id,camera=source,site_id=site_id,file=path.name):
+                raise HTTPException(429, 'Очередь заполнена')
             store.audit(user['username'], 'video.upload', job_id)
         except BaseException:
             path.unlink(missing_ok=True)
@@ -316,7 +316,11 @@ def create_app(settings=None, background=True):
 
     @app.post('/api/jobs/{job_id}/retry')
     def retry(job_id: str, user=Depends(authenticated)):
-        if not store.execute("UPDATE jobs SET state='queued',attempts=0,updated=?,error=NULL WHERE id=? AND state='failed' AND file IS NOT NULL", (time.time(), job_id)):
+        writable()
+        result = store.retry_job(job_id)
+        if result == 'full':
+            raise HTTPException(429, 'Очередь заполнена')
+        if result != 'queued':
             raise HTTPException(409, 'Повтор доступен для неудачного задания с сохранённым видео')
         store.audit(user['username'], 'analysis.retry', job_id)
         return {'ok': True}

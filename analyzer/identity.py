@@ -26,7 +26,7 @@ class IdentityModel:
         import numpy as np
         from PIL import Image
         # Inspect dimensions before OpenCV decoding to bound decompression memory.
-        with Image.open(io.BytesIO(raw)) as image:
+        with Image.open(io.BytesIO(raw), formats=('JPEG','PNG')) as image:
             if image.format not in ('JPEG','PNG') or image.width*image.height>8_000_000:
                 raise ValueError('JPEG/PNG up to 8 MP required')
             image.verify()

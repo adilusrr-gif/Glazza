@@ -46,6 +46,7 @@ async function refresh() {
     $('#nav-count').textContent = overview.pending;
     $('#sync-status').textContent = overview.health.frigate === 'online' ? 'NVR подключён' : 'Нет связи с NVR';
     setHelp('#sync-status', overview.health.last_sync ? 'Последняя синхронизация: ' + timeLabel(overview.health.last_sync) : 'Frigate ещё не подключён');
+    renderAlerts();
     // Preserve filters and interaction focus; refresh tables only when idle outside forms.
     if (state.view === 'map' && !$('#modal').open) render();
     else if (!helpAnchor && !uploadBusy && !$('#video-file')?.files.length && !$('#modal').open && !['SELECT','INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) render();
@@ -61,16 +62,20 @@ function render() {
   const methods = {platform:renderPlatform,admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
   $('#content').classList.toggle('platform-view',state.view==='platform');
   methods[state.view]();
+  renderAlerts();
+  bindActions(); refreshImages();
+}
+function renderAlerts() {
+  if (!state.overview) return;
+  $$('.admission-alert, .fight-alert', $('#content')).forEach(node => node.remove());
   if (state.admission?.pending && state.view !== 'admission') {
-    $('#content').insertAdjacentHTML('afterbegin', `<div class="warning-box" role="alert">Допуск не подтверждён: ${state.admission.pending} <button class="secondary" id="admission-alert">Проверить входящих</button></div>`);
+    $('#content').insertAdjacentHTML('afterbegin', `<div class="warning-box admission-alert" role="alert">Допуск не подтверждён: ${state.admission.pending} <button class="secondary" id="admission-alert">Проверить входящих</button></div>`);
     $('#admission-alert').onclick=()=>navigate('admission');
   }
-  $$('.fight-alert', $('#content')).forEach(node => node.remove());
   if (state.overview.pending_fights > 0) {
     $('#content').insertAdjacentHTML('afterbegin', `<div class="fight-alert" role="alert"><div><strong>ϟ Возможная драка · ${state.overview.pending_fights}</strong>${help("Откройте запись и проверьте происходящее.", "Действия при сигнале драки")}</div><button class="secondary" id="open-fights">Проверить сигналы</button></div>`);
     $('#open-fights').onclick = () => {filters.kind='fight';filters.status='new';filters.camera='';navigate('events');};
   }
-  bindActions(); refreshImages();
 }
 function cameraCard(camera) {
   return `<article class="camera-card"><div class="camera-picture"><div class="camera-offline ${state.session.demo ? 'demo' : ''}"><span>▣</span>${state.session.demo ? 'Пример камеры · без трансляции' : 'Ожидание сигнала камеры'}</div>${state.session.demo ? '' : `<img data-camera-img="${camera.id}" alt="Камера ${escapeHTML(camera.name)}" hidden>`}<span class="camera-label" data-camera-label="${camera.id}">${state.session.demo ? 'ДЕМОНСТРАЦИЯ' : 'ОЖИДАНИЕ СИГНАЛА'}</span></div><div class="camera-meta"><div><div class="heading-with-help"><h3>${escapeHTML(camera.name)}</h3>${help((camera.zones.length ? camera.zones.length + " зон наблюдения" : "Зоны не настроены") + " · " + (camera.analyze ? "анализ событий" : "контроль объектов"), "О камере " + camera.name)}</div></div><button class="icon-button" data-camera="${camera.id}" aria-label="Настройки камеры ${escapeHTML(camera.name)}">↗</button></div></article>`;
@@ -108,9 +113,9 @@ function renderAnalysis() {
 function renderSystem() {
   const o = state.overview, online = o.health.frigate === 'online';
   const monitor = o.health.fight_monitor || {};
-  const monitorLabels = {waiting:'Ожидание', model_missing:'Модель драк не подключена', nvr_offline:'Нет связи с NVR', monitoring:'Проверяем фрагменты с людьми', no_cameras:'Включите анализ у камеры', backlog:'Очередь задерживает проверку'};
+  const monitorLabels = {waiting:'Ожидание', model_missing:'Модель драк не подключена', nvr_offline:'Нет связи с NVR', monitoring:'Проверяем фрагменты с людьми', no_cameras:'Включите анализ у камеры', error:'Ошибка планирования анализа', backlog:'Очередь задерживает проверку'};
   $('#content').innerHTML = head('Состояние системы', 'Подключения, модели и история действий оператора.') +
-    `<div class="system-grid"><div class="panel"><div class="heading-with-help"><h3>Подключения</h3>${help("Видеоархив: Frigate 0.18.2. Пропущено окон анализа после сбоя или перегрузки: " + Number(monitor.skipped_windows || 0) + ". Разрывы записываются в аудит.", "Диагностика подключений")}</div><div class="status-row">Панель Glazza ${pill('Работает')}</div><div class="status-row">Видеоархив ${pill(state.session.demo ? 'Демонстрация' : online ? 'Подключён' : 'Нет связи',online ? '' : 'warning')}</div><div class="status-row">Сервис анализа ${pill(o.health.analyzer.state === 'ready' ? 'Готов' : 'Не готов',o.health.analyzer.state === 'ready' ? '' : 'warning')}</div><div class="status-row">Контроль драк ${pill(state.session.demo ? 'Демонстрация' : monitorLabels[monitor.state] || 'Ожидание', monitor.state === 'monitoring' ? '' : 'warning')}</div><div class="status-row"><span class="heading-with-help">Хранение журнала ${help("Видео для анализа удаляется через 24 часа после завершения задания. Архив Frigate хранится отдельно.", "О сроках хранения")}</span><span>${o.retention_days} дней</span></div></div><div class="panel"><div class="heading-with-help"><h3>Настройки камер</h3>${help("После добавления камеры или изменения зон примените конфигурацию. Frigate перезапустится; соединение восстановится автоматически. Драки проверяются по коротким фрагментам во время события с задержкой записи и очереди. Кража и мимика — после завершения события.", "О применении настроек")}</div><button class="primary" data-action="apply" ${state.session.demo ? 'disabled' : ''}>Применить и перезапустить Frigate</button></div></div><div class="section-heading"><h2>Журнал действий</h2></div><div id="audit-list" class="panel"><p>Загрузка…</p></div>`;
+    `<div class="system-grid"><div class="panel"><div class="heading-with-help"><h3>Подключения</h3>${help("Видеоархив: Frigate 0.18.2. Пропущено окон анализа после сбоя или перегрузки: " + Number(monitor.skipped_windows || 0) + ". Разрывы записываются в аудит.", "Диагностика подключений")}</div><div class="status-row">Панель Glazza ${pill('Работает')}</div><div class="status-row">Видеоархив ${pill(state.session.demo ? 'Демонстрация' : online ? 'Подключён' : 'Нет связи',online ? '' : 'warning')}</div><div class="status-row">Сервис анализа ${pill(o.health.analyzer.state === 'ready' ? 'Готов' : 'Не готов',o.health.analyzer.state === 'ready' ? '' : 'warning')}</div><div class="status-row">Контроль драк ${pill(state.session.demo ? 'Демонстрация' : monitorLabels[monitor.state] || 'Ожидание', monitor.state === 'monitoring' ? '' : 'warning')}</div><div class="status-row">Очистка хранилища ${pill(o.health.maintenance?.state === 'error' ? 'Ошибка очистки' : o.health.maintenance?.state === 'ok' ? 'Работает' : 'Ожидание', o.health.maintenance?.state === 'error' ? 'warning' : '')}</div><div class="status-row"><span class="heading-with-help">Хранение журнала ${help("Видео для анализа удаляется через 24 часа после завершения задания. Архив Frigate хранится отдельно.", "О сроках хранения")}</span><span>${o.retention_days} дней</span></div></div><div class="panel"><div class="heading-with-help"><h3>Настройки камер</h3>${help("После добавления камеры или изменения зон примените конфигурацию. Frigate перезапустится; соединение восстановится автоматически. Драки проверяются по коротким фрагментам во время события с задержкой записи и очереди. Кража и мимика — после завершения события.", "О применении настроек")}</div><button class="primary" data-action="apply" ${state.session.demo ? 'disabled' : ''}>Применить и перезапустить Frigate</button></div></div><div class="section-heading"><h2>Журнал действий</h2></div><div id="audit-list" class="panel"><p>Загрузка…</p></div>`;
   api('/audit').then(items => { if (!$('#audit-list')) return; $('#audit-list').innerHTML = items.length ? items.slice(0,30).map(i => `<div class="status-row"><span>${escapeHTML(i.actor)} · ${escapeHTML(i.action)}</span><small>${dateLabel(i.at)}</small></div>`).join('') : 'Действий пока нет'; }).catch(e => toast(e.message));
 }
 function refreshImages() {

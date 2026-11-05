@@ -46,6 +46,13 @@ class Camera(CameraLocation):
     zones: list[Zone] = Field(default_factory=list, max_length=12)
     analyze: bool = False
 
+    @field_validator('id')
+    @classmethod
+    def source_names_reserved(cls, value):
+        if value in ('upload','webcam'):
+            raise ValueError('Это имя зарезервировано для загрузки видео')
+        return value
+
     @field_validator('stream')
     @classmethod
     def valid_stream(cls, value):

@@ -58,13 +58,12 @@ def migrate(db):
             if table!='cameras':
                 db.execute(f"UPDATE {table} SET site_id=COALESCE((SELECT site_id FROM cameras WHERE id={table}.camera),'default')")
         db.execute(f'CREATE INDEX IF NOT EXISTS {table}_site ON {table}(site_id)')
-        if table=='jobs':
-            db.execute(f'''CREATE TRIGGER IF NOT EXISTS {table}_assign_site AFTER INSERT ON {table}
-                WHEN EXISTS(SELECT 1 FROM cameras WHERE id=NEW.camera)
-                BEGIN UPDATE {table} SET site_id=(SELECT site_id FROM cameras WHERE id=NEW.camera) WHERE id=NEW.id; END''')
+        # Producers explicitly capture the owning site. A camera name must never
+        # override an upload's selected site, including on existing installations.
 
 
     db.execute('DROP TRIGGER IF EXISTS events_assign_site')
+    db.execute('DROP TRIGGER IF EXISTS jobs_assign_site')
 
 def check_site(store, identifier):
     if identifier is not None and not store.rows('SELECT id FROM sites WHERE id=?',(identifier,)):

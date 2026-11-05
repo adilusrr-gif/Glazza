@@ -25,11 +25,34 @@ class Engine:
         # Service-to-service traffic must not leave the Docker network via ambient proxies.
         self.client = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
         self.tasks = []
+        self.health['maintenance'] = {'state': 'waiting', 'error': None}
+        self.health['background'] = {}
         self.camera_signal_snapshot = {'checked_at': None, 'updated_at': None, 'cameras': {}, 'reason': 'waiting'}
 
     async def start(self):
         self.store.execute("UPDATE jobs SET state='queued', updated=? WHERE state='running'", (time.time(),))
-        self.tasks = [asyncio.create_task(self.poll()), asyncio.create_task(self.work()), asyncio.create_task(self.poll_camera_signals()), asyncio.create_task(self.admission_work())]
+        self.tasks = [asyncio.create_task(self.supervise(name, worker)) for name, worker in
+                      [('poll',self.poll),('analysis',self.work),('cameras',self.poll_camera_signals),('admission',self.admission_work)]]
+
+    async def supervise(self, name, worker):
+        while True:
+            self.health['background'][name] = 'running'
+            try:
+                await worker()
+                raise RuntimeError('Background worker returned')
+            except Exception as exc:
+                self.health['background'][name] = 'restarting'
+                if name == 'poll':
+                    self.health.update(frigate='offline', error='Обработка событий перезапускается')
+                log.exception('Background worker %s failed: %s', name, type(exc).__name__)
+            await asyncio.sleep(1)
+
+    def health_snapshot(self):
+        health = dict(self.health)
+        if self.tasks and (any(task.done() for task in self.tasks) or
+                           time.time() - (self.health.get('poll_heartbeat') or 0) > max(60,self.settings.poll_seconds * 3)):
+            health.update(frigate='offline', error='Обработка событий не отвечает')
+        return health
 
     async def admission_work(self):
         while True:
@@ -109,8 +132,21 @@ class Engine:
             # Record once per tracked object, including repeated /events polling and restarts.
             if camera['analyze'] and ended and event.get('has_clip') and modules_for(self.store,camera['site_id']) & {'fight','theft','face'}:
                 job_id = str(uuid.UUID(hashlib.md5(('frigate:' + source_id).encode()).hexdigest()))
-                self.store.execute('INSERT OR IGNORE INTO jobs(id,event_id,source_id,camera,state,created,updated) VALUES(?,?,?,?,?,?,?)',
-                                   (job_id, event_id, source_id, camera['id'], 'queued', time.time(), time.time()))
+                self.store.enqueue(id=job_id,event_id=event_id,source_id=source_id,camera=camera['id'],site_id=camera['site_id'])
+
+    def enqueue_completed(self):
+        # Events are the durable overflow buffer: retry after capacity frees, even
+        # when the Frigate cursor has advanced beyond the completed object.
+        events = self.store.rows('''SELECT e.* FROM events e JOIN cameras c ON c.id=e.camera JOIN sites s ON s.id=e.site_id
+            WHERE e.source='frigate' AND e.ended IS NOT NULL AND c.analyze=1
+            AND EXISTS(SELECT 1 FROM json_each(s.modules) WHERE value IN ('fight','theft','face'))
+            AND json_extract(e.details,'$.has_clip')=1
+            AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.source_id=e.source_id)
+            ORDER BY e.started LIMIT 100''')
+        for event in events:
+            job_id = str(uuid.UUID(hashlib.md5(('frigate:' + event['source_id']).encode()).hexdigest()))
+            if not self.store.enqueue(id=job_id,event_id=event['id'],source_id=event['source_id'],camera=event['camera'],site_id=event['site_id']):
+                break
 
     async def sync(self):
         if self.settings.demo:
@@ -143,10 +179,12 @@ class Engine:
             elif response.status_code == 404:
                 self.store.execute('UPDATE events SET ended=? WHERE source_id=? AND ended IS NULL', (until, item['source_id']))
         self.store.execute("INSERT INTO meta(key,value) VALUES('poll_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(until - 1),))
+        self.enqueue_completed()
         self.health.update(frigate='online', last_sync=until, error=None)
 
     async def poll(self):
         while True:
+            self.health['poll_heartbeat'] = time.time()
             try:
                 await self.sync()
             except Exception as exc:
@@ -159,8 +197,17 @@ class Engine:
                     self.health['analyzer'] = response.json()
                 except Exception:
                     self.health['analyzer'] = {'state': 'unavailable', 'models': []}
-                self.schedule_fights()
-            self.cleanup()
+                try:
+                    self.schedule_fights()
+                except Exception as exc:
+                    self.health['fight_monitor']['state'] = 'error'
+                    log.warning('Fight scheduling failed: %s', type(exc).__name__)
+            try:
+                self.cleanup()
+                self.health['maintenance'] = {'state': 'ok', 'error': None}
+            except Exception as exc:
+                self.health['maintenance'] = {'state': 'error', 'error': 'Очистка хранилища не выполнена'}
+                log.warning('Storage cleanup failed: %s', type(exc).__name__)
             await asyncio.sleep(self.settings.poll_seconds)
 
     def schedule_fights(self, now=None):
@@ -199,11 +246,12 @@ class Engine:
                 previous = latest - 6
             end, start = previous + 6, previous - 6
             people = self.store.rows("SELECT id FROM events WHERE source='frigate' AND camera=? AND started < ? AND (ended IS NULL OR ended > ?) LIMIT 1", (camera['id'], end, start))
+            if people:
+                job_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f'glazza:fight:{camera["id"]}:{end}'))
+                if not self.store.enqueue(id=job_id,camera=camera['id'],site_id=camera['site_id'],clip_start=start,clip_end=end,now=now):
+                    busy.append(camera['id'])
+                    continue
             with self.store.connect() as db:
-                if people:
-                    job_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f'glazza:fight:{camera["id"]}:{end}'))
-                    db.execute('INSERT OR IGNORE INTO jobs(id,camera,state,created,updated,clip_start,clip_end) VALUES(?,?,?,?,?,?,?)',
-                               (job_id, camera['id'], 'queued', now, now, start, end))
                 db.execute('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, str(end)))
         health.update(state='backlog' if busy else 'monitoring' if cameras else 'no_cameras', busy_cameras=busy,
                       window_seconds=12, stride_seconds=6, recording_delay_seconds=20)
@@ -254,8 +302,17 @@ class Engine:
             if detection.get('kind') not in ('fight', 'theft') or detection['kind'] not in modules_for(self.store,job.get('site_id') or camera_site(self.store,job['camera'])):
                 continue
             start = job.get('clip_start')
-            started = (start + detection.get('start_seconds', 0)) if start is not None else job['created']
-            ended = (start + detection.get('end_seconds', 12)) if start is not None else job['created']
+            origin = self.store.rows('SELECT started,ended FROM events WHERE id=?', (job.get('event_id'),))
+            if start is not None:
+                base, duration = start, job['clip_end'] - start
+            elif origin:
+                base = origin[0]['started']
+                duration = (origin[0]['ended'] or base) - base
+            else:
+                # Uploaded recordings have no trustworthy capture timestamp.
+                base, duration = job['created'], 0
+            started = base + detection.get('start_seconds', 0)
+            ended = base + detection.get('end_seconds', max(duration, detection.get('start_seconds', 0)))
             # Overlapping recording windows should not flood the operator with the same signal.
             if start is not None and self.store.rows("SELECT id FROM events WHERE source='analysis' AND camera=? AND kind=? AND started BETWEEN ? AND ? LIMIT 1",
                                                     (job['camera'], detection['kind'], started - 30, started + 30)):

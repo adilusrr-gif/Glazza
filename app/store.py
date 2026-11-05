@@ -37,9 +37,12 @@ class Store:
                 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
             ''')
             columns = {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}
-            for name in ('clip_start', 'clip_end'):
+            job_columns = {'clip_start':'REAL', 'clip_end':'REAL', 'event_id':'TEXT', 'source_id':'TEXT',
+                           'attempts':'INTEGER NOT NULL DEFAULT 0', 'error':'TEXT', 'result':'TEXT'}
+            for name, definition in job_columns.items():
                 if name not in columns:
-                    db.execute(f'ALTER TABLE jobs ADD COLUMN {name} REAL')
+                    db.execute(f'ALTER TABLE jobs ADD COLUMN {name} {definition}')
+            db.execute('CREATE INDEX IF NOT EXISTS job_source ON jobs(source_id)')
             camera_columns = {row['name'] for row in db.execute('PRAGMA table_info(cameras)')}
             for name in ('latitude', 'longitude'):
                 if name not in camera_columns:
@@ -70,6 +73,30 @@ class Store:
 
     def audit(self, actor, action, subject, detail=''):
         self.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)', (time.time(), actor, action, subject, detail))
+
+    def enqueue(self, *, id, camera, site_id, event_id=None, source_id=None,
+                file=None, clip_start=None, clip_end=None, now=None):
+        """Serialize all producers, including uploads, against one pending-job limit."""
+        now = time.time() if now is None else now
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT 1 FROM jobs WHERE id=?', (id,)).fetchone():
+                return True  # Idempotent ingestion, even while the queue is full.
+            if db.execute("SELECT count(*) FROM jobs WHERE state IN ('queued','running')").fetchone()[0] >= 100:
+                return False
+            db.execute('''INSERT INTO jobs(id,camera,site_id,event_id,source_id,file,clip_start,clip_end,state,created,updated)
+                VALUES(?,?,?,?,?,?,?,?, 'queued',?,?)''',
+                (id,camera,site_id,event_id,source_id,file,clip_start,clip_end,now,now))
+            return True
+
+    def retry_job(self, identifier):
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute("SELECT count(*) FROM jobs WHERE state IN ('queued','running')").fetchone()[0] >= 100:
+                return 'full'
+            changed = db.execute("UPDATE jobs SET state='queued',attempts=0,updated=?,error=NULL WHERE id=? AND state='failed' AND file IS NOT NULL",
+                                 (time.time(),identifier)).rowcount
+            return 'queued' if changed else 'unavailable'
 
     def event(self, *, source_id, source, camera, kind, score, started, ended=None, details=None, site_id=None):
         identifier = hashlib.sha256(f'{source}:{source_id}:{kind}'.encode()).hexdigest()[:32]

@@ -3,7 +3,7 @@ services:
   analyzer:
     build:
       args:
-        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu124
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu126
     environment:
       GLAZZA_DEVICE: cuda
     deploy:

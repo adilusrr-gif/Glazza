@@ -164,7 +164,10 @@ def register(app, store, engine, auth, writable):
         writable()
         with store.connect() as db:
             db.execute('DELETE FROM admission_people WHERE id=?',(identifier,))
-            db.execute('UPDATE admission_entries SET candidate_id=NULL,person_id=NULL WHERE candidate_id=? OR person_id=?',(identifier,identifier))
+            db.execute('''UPDATE admission_entries SET
+                candidate_id=CASE WHEN candidate_id=? THEN NULL ELSE candidate_id END,
+                person_id=CASE WHEN person_id=? THEN NULL ELSE person_id END
+                WHERE candidate_id=? OR person_id=?''',(identifier,identifier,identifier,identifier))
             db.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)',(time.time(),user['username'],'admission.delete',identifier,''))
         return {'ok':True}
 
@@ -218,6 +221,10 @@ def register(app, store, engine, auth, writable):
         with store.connect() as db:
             entry=db.execute('SELECT * FROM admission_entries WHERE id=?',(identifier,)).fetchone()
             if not entry: raise HTTPException(404)
+            if body.person_id is not None:
+                p=db.execute('SELECT * FROM admission_people WHERE id=?',(body.person_id,)).fetchone()
+                if not p or p['site_id'] != entry['site_id']:
+                    raise HTTPException(422,'Выберите человека этого объекта')
             if body.decision in ('allowed','guest','exit'):
                 p=db.execute('SELECT * FROM admission_people WHERE id=?',(body.person_id,)).fetchone()
                 if not p or p['site_id'] != entry['site_id'] or (body.decision != 'exit' and (not p['enabled'] or not p['valid_from']<=now<=p['valid_until'])):
