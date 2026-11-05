@@ -17,11 +17,13 @@ jobs:
       - run: python -m pytest -q
       - run: node --check app/static/app.js
       - run: node --check app/static/admission.js
+      - run: node --check app/static/login.js
       - run: pip install playwright==1.51.0 && python -m playwright install --with-deps chromium
       - run: python tests/browser_smoke.py
       - run: python tests/browser_admission.py
       - run: python tests/browser_platform.py
       - run: PYTHONPATH=. python tests/browser_audit_regressions.py
+      - run: python tests/browser_login.py
       - run: python scripts/setup.py --demo
       - run: docker compose --profile nvr --profile ai config --quiet
       - run: docker build -t glazza:test .

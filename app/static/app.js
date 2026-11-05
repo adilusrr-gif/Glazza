@@ -28,7 +28,7 @@ function head(title, description, actions = '') { return `<div class="page-head"
 function empty(title, description = '') { return `<div class="empty"><span>◎</span><div class="heading-with-help">${escapeHTML(title)}${description ? help(description) : ""}</div></div>`; }
 function pill(label, type = '') { return `<span class="pill ${type}">${escapeHTML(label)}</span>`; }
 function eventStatus(event) { return pill(statuses[event.status], event.status === 'new' ? 'warning' : event.status === 'dismissed' ? 'neutral' : ''); }
-function showLogin() { hideHelp(); stopWebcam(); disposeCameraMap(); state.session = null; $('#login').hidden = false; $('#workspace').hidden = true; clearInterval(timer); clearInterval(imageTimer); }
+function showLogin() { window.glazzaLogin.conceal(); hideHelp(); stopWebcam(); disposeCameraMap(); state.session = null; $('#login').hidden = false; $('#workspace').hidden = true; clearInterval(timer); clearInterval(imageTimer); }
 function showWorkspace() {
   $('#login').hidden = true; $('#workspace').hidden = false; $('#demo-banner').hidden = !state.session.demo;
   $('#user-name').textContent = state.session.username;
@@ -222,7 +222,7 @@ function bindActions() {
   });
 }
 $('#site-selector').onchange=async e=>{if(refreshing||uploadBusy){e.target.value=selectedSite;return;}selectedSite=e.target.value;e.target.blur();filters={kind:'',status:'',camera:''};disposeCameraMap();await refresh();};
-$('#login-form').onsubmit=async event=>{event.preventDefault();const f=new FormData(event.target),button=$('button',event.target);button.disabled=true;$('#login-error').textContent='';try{state.session=await api('/login',{method:'POST',body:JSON.stringify({username:f.get('username'),password:f.get('password')})});$('input[name=password]',event.target).value='';showWorkspace();}catch(e){$('#login-error').textContent=e.message;}finally{button.disabled=false;}};
+$('#login-form').onsubmit=async event=>{event.preventDefault();if(!window.glazzaLogin.begin())return;const f=new FormData(event.target);try{state.session=await api('/login',{method:'POST',body:JSON.stringify({username:f.get('username'),password:f.get('password')})});$('input[name=password]',event.target).value='';window.glazzaLogin.conceal();showWorkspace();}catch(e){window.glazzaLogin.fail(e.message);}finally{window.glazzaLogin.finish();}};
 $('#logout').onclick=async()=>{try{await api('/logout',{method:'POST'});}finally{showLogin();}};
 $('#mobile-logout').onclick=$('#logout').onclick;
 $$('.nav-item').forEach(b=>b.onclick=()=>navigate(b.dataset.view));
