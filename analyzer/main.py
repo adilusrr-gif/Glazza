@@ -106,10 +106,15 @@ def create_app():
     class AnalysisRequest(BaseModel):
         job_id: uuid.UUID
         mode: Literal['all', 'fight'] = 'all'
+        modules: list[Literal['fight','theft','face']] | None = None
 
     @app.post('/analyze')
     def analyze(body: AnalysisRequest, x_worker_key: str | None = Header(default=None)):
         authorize(x_worker_key)
+        requested = set(body.modules) if body.modules is not None else {'fight','theft','face'}
+        if body.mode == 'fight': requested &= {'fight'}
+        if not requested:
+            raise HTTPException(422, 'No analysis modules enabled')
         if not ({'fight','vadclip','face'} & models.keys()):
             raise HTTPException(503, 'No models loaded')
         if body.mode == 'fight' and not ({'fight', 'vadclip'} & models.keys()):
@@ -124,7 +129,7 @@ def create_app():
             result = {'detections': [], 'face': {}, 'warnings': [], 'model': '', 'checked': []}
             names = []
             frames = None
-            if 'fight' in models:
+            if 'fight' in models and 'fight' in requested:
                 fight_frames, duration = read_video(path, 'fight')
                 result['fight'] = models['fight'].analyze(fight_frames)
                 result['detections'].extend(result['fight']['detections'])
@@ -133,25 +138,27 @@ def create_app():
                 result['warnings'].append('Сигнал возможной драки/насилия требует просмотра оператором; модель также обучена на стрельбе и не разделяет эти действия. Порог не откалиброван для колледжа.')
                 if result['fight']['windows_analyzed'] < models['fight'].consecutive:
                     result['warnings'].append('Недостаточно окон для подтверждения сигнала драки: загрузите более длинное видео.')
-            if 'vadclip' in models and (body.mode == 'all' or 'fight' not in models):
+            if 'vadclip' in models and (('theft' in requested) or ('fight' in requested and 'fight' not in models)):
                 frames, duration = read_video(path)
                 detections = models['vadclip'].analyze(frames)
-                result['detections'].extend(d for d in detections if (body.mode == 'all' or d['kind'] == 'fight') and (d['kind'] != 'fight' or 'fight' not in models))
-                result['checked'].extend(['fight', 'theft'] if body.mode == 'all' else ['fight'])
+                result['detections'].extend(d for d in detections if d['kind'] in requested and (d['kind'] != 'fight' or 'fight' not in models))
+                result['checked'].extend(requested & {'fight','theft'})
                 names.append('VadCLIP UCF-Crime')
                 result['warnings'].append('Порог требует настройки на вашем объекте. Качество этого видеоадаптера не принято на независимом корпусе.')
-            elif body.mode == 'all' and 'fight' not in models:
+            elif body.mode == 'all' and 'fight' not in models and requested & {'fight','theft'}:
                 result['warnings'].append('Модель действий не загружена: драки и кражи в этом видео не проверялись.')
-            elif body.mode == 'all':
+            elif body.mode == 'all' and 'theft' in requested:
                 result['warnings'].append('VadCLIP не загружен: возможная кража в этом видео не проверялась.')
-            if 'face' in models and body.mode == 'all':
+            if 'face' in models and 'face' in requested:
                 if frames is None:
                     frames, duration = read_video(path)
                 result['face'] = models['face'].analyze(frames)
                 result['checked'].append('face')
                 names.append('MediaPipe Face Landmarker')
-            elif body.mode == 'all':
+            elif 'face' in requested:
                 result['warnings'].append('Модель мимики не загружена.')
+            if not result['checked']:
+                raise HTTPException(503, 'Requested models are not loaded')
             result.update(duration_seconds=duration, model=' + '.join(names), checked=sorted(set(result['checked'])))
             return result
         except HTTPException:

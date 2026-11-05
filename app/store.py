@@ -4,6 +4,7 @@ import json
 import secrets
 import sqlite3
 import time
+from .platform import migrate, camera_site
 
 
 def password_hash(password, salt=None):
@@ -43,6 +44,7 @@ class Store:
             for name in ('latitude', 'longitude'):
                 if name not in camera_columns:
                     db.execute(f'ALTER TABLE cameras ADD COLUMN {name} REAL')
+            migrate(db)
         self.path.chmod(0o600)
 
     @contextlib.contextmanager
@@ -69,16 +71,17 @@ class Store:
     def audit(self, actor, action, subject, detail=''):
         self.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)', (time.time(), actor, action, subject, detail))
 
-    def event(self, *, source_id, source, camera, kind, score, started, ended=None, details=None):
+    def event(self, *, source_id, source, camera, kind, score, started, ended=None, details=None, site_id=None):
         identifier = hashlib.sha256(f'{source}:{source_id}:{kind}'.encode()).hexdigest()[:32]
+        site_id = site_id or camera_site(self, camera)
         with self.connect() as db:
-            db.execute('''INSERT INTO events(id,source_id,source,camera,kind,score,started,ended,details) VALUES(?,?,?,?,?,?,?,?,?)
+            db.execute('''INSERT INTO events(id,source_id,source,camera,kind,score,started,ended,details,site_id) VALUES(?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(source,source_id,kind) DO UPDATE SET ended=excluded.ended, score=excluded.score, details=excluded.details''',
-                (identifier, source_id, source, camera, kind, score, started, ended, json.dumps(details or {}, ensure_ascii=False)))
+                (identifier, source_id, source, camera, kind, score, started, ended, json.dumps(details or {}, ensure_ascii=False), site_id))
         return identifier
 
-    def cameras(self, private=False):
-        items = self.rows('SELECT * FROM cameras ORDER BY name')
+    def cameras(self, private=False, site_id=None):
+        items = self.rows('SELECT * FROM cameras' + (' WHERE site_id=?' if site_id else '') + ' ORDER BY name', (site_id,) if site_id else ())
         for item in items:
             item['zones'] = json.loads(item['zones'])
             item['analyze'] = bool(item['analyze'])
@@ -86,9 +89,9 @@ class Store:
                 item.pop('stream')
         return items
 
-    def events(self, status=None, kind=None, camera=None, limit=100):
+    def events(self, status=None, kind=None, camera=None, limit=100, site_id=None):
         filters, args = [], []
-        for name, value in [('status', status), ('kind', kind), ('camera', camera)]:
+        for name, value in [('status', status), ('kind', kind), ('camera', camera), ('site_id', site_id)]:
             if value:
                 filters.append(f'{name}=?')
                 args.append(value)

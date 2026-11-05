@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .admission import register as register_admission
+from .platform import register as register_platform, check_site, modules_for
 from .config import Settings
 from .engine import Engine, seed_demo
 from .frigate import atomic_config, validate_names
@@ -100,6 +101,7 @@ def create_app(settings=None, background=True):
             raise HTTPException(422, str(error))
 
     register_admission(app, store, engine, authenticated, writable)
+    register_platform(app, store, engine, authenticated, writable)
 
     @app.get('/healthz')
     def health():
@@ -139,17 +141,21 @@ def create_app(settings=None, background=True):
         return {'ok': True}
 
     @app.get('/api/overview')
-    def overview(user=Depends(authenticated)):
-        counts = {r['kind']: r['n'] for r in store.rows('SELECT kind,count(*) AS n FROM events WHERE started>? GROUP BY kind', (time.time() - 86400,))}
-        return {'mode': mode, 'cameras': len(store.cameras()), 'counts': counts,
-                'pending_fights': store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='fight'")[0]['n'],
-                'pending': store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind!='person'")[0]['n'],
-                'health': engine.health, 'jobs': store.rows('SELECT state,count(*) AS n FROM jobs GROUP BY state'),
-                'retention_days': settings.retention_days}
+    def overview(site_id: str | None = None, user=Depends(authenticated)):
+        check_site(store, site_id)
+        scope = ' AND site_id=?' if site_id else ''
+        args = (site_id,) if site_id else ()
+        counts = {r['kind']: r['n'] for r in store.rows('SELECT kind,count(*) AS n FROM events WHERE started>?' + scope + ' GROUP BY kind', (time.time()-86400,*args))}
+        return {'mode':mode,'site_id':site_id,'cameras':len(store.cameras(site_id=site_id)),'counts':counts,
+                'pending_fights':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='fight'"+scope,args)[0]['n'],
+                'pending':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind!='person'"+scope,args)[0]['n'],
+                'health':engine.health,'jobs':store.rows('SELECT state,count(*) AS n FROM jobs WHERE 1=1'+scope+' GROUP BY state',args),
+                'retention_days':settings.retention_days}
 
     @app.get('/api/cameras')
-    def cameras(user=Depends(authenticated)):
-        return store.cameras()
+    def cameras(site_id: str | None = None, user=Depends(authenticated)):
+        check_site(store, site_id)
+        return store.cameras(site_id=site_id)
 
     @app.get('/api/cameras/status')
     def camera_status(user=Depends(authenticated)):
@@ -163,8 +169,9 @@ def create_app(settings=None, background=True):
         if store.rows('SELECT id FROM cameras WHERE id=?', (body.id,)):
             raise HTTPException(409, 'Такой идентификатор камеры уже существует')
         check_camera_names(body.model_dump())
-        store.execute('INSERT INTO cameras(id,name,stream,zones,analyze,latitude,longitude) VALUES(?,?,?,?,?,?,?)',
-                      (body.id, body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze), body.latitude, body.longitude))
+        check_site(store, body.site_id)
+        store.execute('INSERT INTO cameras(id,name,stream,zones,analyze,latitude,longitude,site_id) VALUES(?,?,?,?,?,?,?,?)',
+                      (body.id, body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze), body.latitude, body.longitude, body.site_id))
         store.audit(user['username'], 'camera.create', body.id)
         return {'id': body.id, 'apply_required': True}
 
@@ -178,8 +185,10 @@ def create_app(settings=None, background=True):
         location_fields = {'latitude', 'longitude'} & body.model_fields_set
         location_sql = ',latitude=?,longitude=?' if location_fields else ''
         location_args = (body.latitude, body.longitude) if location_fields else ()
-        changed = store.execute('UPDATE cameras SET name=?,stream=?,zones=?,analyze=?' + location_sql + ' WHERE id=?',
-                                (body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze), *location_args, camera_id))
+        site_sql = ',site_id=?' if 'site_id' in body.model_fields_set else ''
+        site_args = (check_site(store, body.site_id),) if site_sql else ()
+        changed = store.execute('UPDATE cameras SET name=?,stream=?,zones=?,analyze=?' + location_sql + site_sql + ' WHERE id=?',
+                                (body.name, body.stream, json.dumps([z.model_dump() for z in body.zones]), int(body.analyze), *location_args, *site_args, camera_id))
         if not changed:
             raise HTTPException(404, 'Камера не найдена')
         store.audit(user['username'], 'camera.update', camera_id)
@@ -229,8 +238,9 @@ def create_app(settings=None, background=True):
         return {'saved': True, 'restarted': True}
 
     @app.get('/api/events')
-    def events(status: str | None = None, kind: str | None = None, camera: str | None = None, limit: int = 100, user=Depends(authenticated)):
-        return store.events(status, kind, camera, max(1, min(limit, 500)))
+    def events(status: str | None = None, kind: str | None = None, camera: str | None = None, limit: int = 100, site_id: str | None = None, user=Depends(authenticated)):
+        check_site(store, site_id)
+        return store.events(status, kind, camera, max(1, min(limit, 500)), site_id=site_id)
 
     @app.patch('/api/events/{event_id}')
     def review(event_id: str, body: Review, user=Depends(authenticated)):
@@ -256,18 +266,22 @@ def create_app(settings=None, background=True):
         return store.rows('SELECT * FROM audit ORDER BY id DESC LIMIT 200')
 
     @app.get('/api/jobs')
-    def jobs(user=Depends(authenticated)):
-        items = store.rows('SELECT id,camera,state,created,updated,error,result,file,clip_start,clip_end FROM jobs ORDER BY created DESC LIMIT 100')
+    def jobs(site_id: str | None = None, user=Depends(authenticated)):
+        check_site(store, site_id)
+        items = store.rows('SELECT id,camera,state,created,updated,error,result,file,clip_start,clip_end,site_id FROM jobs' + (' WHERE site_id=?' if site_id else '') + ' ORDER BY created DESC LIMIT 100', (site_id,) if site_id else ())
         for item in items:
             item['result'] = json.loads(item['result']) if item['result'] else None
             item['has_file'] = bool(item.pop('file'))
         return items
 
     @app.post('/api/jobs/upload', status_code=202)
-    async def upload(request: Request, source: Literal['upload', 'webcam'] = 'upload', user=Depends(authenticated)):
+    async def upload(request: Request, source: Literal['upload', 'webcam'] = 'upload', site_id: str = 'default', user=Depends(authenticated)):
         writable()
         if store.rows("SELECT count(*) AS n FROM jobs WHERE state IN ('queued','running')")[0]['n'] >= 100:
             raise HTTPException(429, 'Очередь заполнена')
+        check_site(store, site_id)
+        if not modules_for(store,site_id) & {'fight','theft','face'}:
+            raise HTTPException(422,'На объекте не включены модули анализа видео')
         # Raw request streaming avoids buffering multipart uploads before enforcing the limit.
         if request.headers.get('content-type', '').split(';')[0] not in (*MIME_TYPES.values(), 'video/quicktime', 'video/avi', 'application/octet-stream'):
             raise HTTPException(415, 'Загрузите MP4, MOV, WebM, MKV или AVI')
@@ -292,8 +306,8 @@ def create_app(settings=None, background=True):
             destination = path.with_suffix(suffix)
             path.rename(destination)
             path = destination
-            store.execute('INSERT INTO jobs(id,camera,state,created,updated,file) VALUES(?,?,?,?,?,?)',
-                          (job_id, source, 'queued', time.time(), time.time(), path.name))
+            store.execute('INSERT INTO jobs(id,camera,state,created,updated,file,site_id) VALUES(?,?,?,?,?,?,?)',
+                          (job_id, source, 'queued', time.time(), time.time(), path.name, site_id))
             store.audit(user['username'], 'video.upload', job_id)
         except BaseException:
             path.unlink(missing_ok=True)

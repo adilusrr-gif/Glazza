@@ -2,7 +2,7 @@
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const titles = {admission:'Допуск и посетители',overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
+const titles = {platform:'Организации и объекты',admission:'Допуск и посетители',overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
 const kinds = {intrusion:'Вход в запретную зону', fight:'Возможная драка', theft:'Возможная кража', person:'Человек в кадре'};
 const symbols = {intrusion:'◇', fight:'ϟ', theft:'◈', person:'♙'};
 const statuses = {new:'Не проверено', confirmed:'Подтверждено', dismissed:'Отклонено'};
@@ -40,8 +40,9 @@ async function refresh() {
   if (!state.session || refreshing) return;
   refreshing = true;
   try {
-    const [overview, cameras, events, jobs, cameraStatus, admission] = await Promise.all([api('/overview'), api('/cameras'), api('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : '')), api('/jobs'), api('/cameras/status'), api('/admission')]);
-    Object.assign(state, {overview, cameras, events, jobs, cameraStatus, admission});
+    const [overview, cameras, events, jobs, cameraStatus, admission, platform, allCameras] = await Promise.all([api(scopeUrl('/overview')), api(scopeUrl('/cameras')), api(scopeUrl('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : ''))), api(scopeUrl('/jobs')), api('/cameras/status'), api(scopeUrl('/admission')), api('/platform'), api('/cameras')]);
+    Object.assign(state, {overview, cameras, events, jobs, cameraStatus, admission, platform, allCameras});
+    updateSiteSelector();
     $('#nav-count').textContent = overview.pending;
     $('#sync-status').textContent = overview.health.frigate === 'online' ? 'NVR подключён' : 'Нет связи с NVR';
     setHelp('#sync-status', overview.health.last_sync ? 'Последняя синхронизация: ' + timeLabel(overview.health.last_sync) : 'Frigate ещё не подключён');
@@ -57,7 +58,8 @@ function render() {
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === state.view));
   $('#breadcrumb').textContent = titles[state.view];
   if (state.view !== 'map') disposeCameraMap();
-  const methods = {admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
+  const methods = {platform:renderPlatform,admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
+  $('#content').classList.toggle('platform-view',state.view==='platform');
   methods[state.view]();
   if (state.admission?.pending && state.view !== 'admission') {
     $('#content').insertAdjacentHTML('afterbegin', `<div class="warning-box" role="alert">Допуск не подтверждён: ${state.admission.pending} <button class="secondary" id="admission-alert">Проверить входящих</button></div>`);
@@ -129,11 +131,11 @@ function modal(title, body, explanation = '') { hideHelp(); stopWebcam(); $('#mo
 function addCamera(location = null) {
   if (state.session.demo) return toast('Подключение доступно в рабочем режиме. Демонстрация не управляет оборудованием.');
   const position = location && hasCameraLocation(location) ? {latitude: location.latitude, longitude: location.longitude} : {};
-  modal(location ? 'Камера в выбранной точке' : 'Подключить камеру', `<form id="camera-form"><div class="form-row"><label>Название<input name="name" placeholder="Главный вход" required maxlength="80"></label><label>Идентификатор<input name="id" placeholder="entrance" pattern="[a-z][a-z0-9_]{1,39}" required></label></div><label>Адрес видеопотока<input name="stream" placeholder="rtsp://user:password@192.168.1.50:554/stream" required autocomplete="off" type="password"></label><label><input type="checkbox" name="analyze">Контроль драк и анализ событий</label><p class="small"><button type="button" class="text-button" data-camera-webcam>Тест веб-камеры →</button></p><p class="error" id="form-error" role="alert"></p><div class="form-actions"><button type="submit" class="primary">Сохранить камеру</button></div></form>`, "Поддерживаются RTSP/RTSPS, HTTP(S) и RTMP(S) любой марки. Для ONVIF нужен RTSP-адрес профиля, а не страница входа. Для анализа нужны установленные модели. Пароль камеры после сохранения не возвращается в браузер. Расположение можно указать в разделе «Карта Казахстана».");
+  modal(location ? 'Камера в выбранной точке' : 'Подключить камеру', `<form id="camera-form"><div class="form-row"><label>Название<input name="name" placeholder="Главный вход" required maxlength="80"></label><label>Идентификатор<input name="id" placeholder="entrance" pattern="[a-z][a-z0-9_]{1,39}" required></label></div><label>Адрес видеопотока<input name="stream" placeholder="rtsp://user:password@192.168.1.50:554/stream" required autocomplete="off" type="password"></label><label><input type="checkbox" name="analyze">Анализ событий объекта</label><p class="small"><button type="button" class="text-button" data-camera-webcam>Тест веб-камеры →</button></p><p class="error" id="form-error" role="alert"></p><div class="form-actions"><button type="submit" class="primary">Сохранить камеру</button></div></form>`, "Поддерживаются RTSP/RTSPS, HTTP(S) и RTMP(S) любой марки. Для ONVIF нужен RTSP-адрес профиля, а не страница входа. Для анализа нужны установленные модели. Пароль камеры после сохранения не возвращается в браузер. Расположение можно указать в разделе «Карта Казахстана».");
   $('[data-camera-webcam]').onclick = openWebcam;
   $('#camera-form').onsubmit = async event => {
     event.preventDefault(); const form = new FormData(event.target); const button = $('button[type=submit]',event.target); button.disabled = true;
-    try { await api('/cameras', {method:'POST',body:JSON.stringify({id:form.get('id'),name:form.get('name'),stream:form.get('stream'),analyze:form.get('analyze') === 'on',zones:[],...position})}); $('#modal').close(); toast('Камера сохранена. Примените настройки, чтобы подключить поток.'); await refresh(); if (location && state.view === 'map') openCameraMarker(form.get('id')); }
+    try { await api('/cameras', {method:'POST',body:JSON.stringify({site_id:selectedSite||'default',id:form.get('id'),name:form.get('name'),stream:form.get('stream'),analyze:form.get('analyze') === 'on',zones:[],...position})}); $('#modal').close(); toast('Камера сохранена. Примените настройки, чтобы подключить поток.'); await refresh(); if (location && state.view === 'map') openCameraMarker(form.get('id')); }
     catch(error) { $('#form-error').textContent = error.message; } finally { button.disabled = false; }
   };
 }
@@ -161,7 +163,7 @@ function cameraSettings(id) {
   $('#zone-add').onclick = () => { const name = $('#zone-name').value; if (points.length < 3 || !/^[a-z][a-z0-9_]{1,39}$/.test(name) || zones.some(z => z.name === name)) { $('#zone-error').textContent = 'Поставьте минимум 3 точки и задайте уникальное имя латиницей.'; return; } zones.push({name,points,restricted:true}); points=[]; $('#zone-error').textContent=''; draw(); };
   $('#zone-save').onclick = async () => { try { if(points.length) throw new Error('Сначала добавьте нарисованную зону или очистите точки.'); await api('/cameras/'+id+'/zones',{method:'PUT',body:JSON.stringify({zones})}); $('#modal').close(); toast('Зоны сохранены. Примените настройки.'); refresh(); } catch(e) { $('#zone-error').textContent=e.message; } };
   $('#camera-delete').onclick = () => { modal('Удалить камеру?',`<p>Камера «${escapeHTML(cam.name)}» будет удалена из конфигурации. Записи в журнале сохранятся до окончания срока хранения.</p><div class="form-actions"><button id="confirm-delete" class="danger">Удалить камеру</button></div>`); $('#confirm-delete').onclick = async()=> { try { await api('/cameras/'+id,{method:'DELETE'});$('#modal').close();toast('Камера удалена. Примените настройки.');refresh(); } catch(e){toast(e.message);} }; };
-  $('#camera-connection').onclick = () => { modal('Настройки подключения', `<form id="connection-form"><label>Название<input name="name" value="${escapeHTML(cam.name)}" required maxlength="80"></label><label>Новый адрес видеопотока<input name="stream" type="password" required autocomplete="off"></label><label><input type="checkbox" name="analyze" ${cam.analyze ? 'checked' : ''}>Контроль драк и анализ событий</label><p id="form-error" class="error"></p><div class="form-actions"><button type="submit" class="primary">Сохранить</button></div></form>`); $('#connection-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{await api('/cameras/'+id,{method:'PUT',body:JSON.stringify({...cam,name:f.get('name'),stream:f.get('stream'),analyze:f.get('analyze')==='on'})});$('#modal').close();toast('Сохранено. Примените настройки.');refresh();}catch(error){$('#form-error').textContent=error.message;}}; };
+  $('#camera-connection').onclick = () => { modal('Настройки подключения', `<form id="connection-form"><label>Название<input name="name" value="${escapeHTML(cam.name)}" required maxlength="80"></label><label>Новый адрес видеопотока<input name="stream" type="password" required autocomplete="off"></label><label><input type="checkbox" name="analyze" ${cam.analyze ? 'checked' : ''}>Анализ событий объекта</label><p id="form-error" class="error"></p><div class="form-actions"><button type="submit" class="primary">Сохранить</button></div></form>`); $('#connection-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{await api('/cameras/'+id,{method:'PUT',body:JSON.stringify({...cam,name:f.get('name'),stream:f.get('stream'),analyze:f.get('analyze')==='on'})});$('#modal').close();toast('Сохранено. Примените настройки.');refresh();}catch(error){$('#form-error').textContent=error.message;}}; };
 }
 async function openEvent(id) {
   let e = state.events.find(e => e.id === id);
@@ -185,7 +187,7 @@ async function applySettings() {
 async function uploadVideo(button) {
   const input=$('#video-file'), file=input?.files[0];if(!file)return toast('Выберите видео для анализа.');if(file.size>200*1024*1024)return toast('Максимальный размер — 200 МБ.');
   uploadBusy=true;button.disabled=true;button.textContent='Загружаем…';
-  try{await api('/jobs/upload',{method:'POST',body:file,headers:{'Content-Type':file.type || 'application/octet-stream'}});input.value='';toast('Видео добавлено в очередь');}catch(e){toast(e.message);}finally{uploadBusy=false;button.disabled=false;button.textContent='Запустить анализ';refresh();}
+  try{await api(scopeUrl('/jobs/upload'),{method:'POST',body:file,headers:{'Content-Type':file.type || 'application/octet-stream'}});input.value='';toast('Видео добавлено в очередь');}catch(e){toast(e.message);}finally{uploadBusy=false;button.disabled=false;button.textContent='Запустить анализ';refresh();}
 }
 function bindActions() {
   $$('[data-nav]').forEach(b=>b.onclick=()=>navigate(b.dataset.nav));
@@ -199,6 +201,7 @@ function bindActions() {
     if(action==='export'){const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(state.events,null,2)],{type:'application/json'}));a.href=url;a.download='glazza-events.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   });
 }
+$('#site-selector').onchange=async e=>{if(refreshing||uploadBusy){e.target.value=selectedSite;return;}selectedSite=e.target.value;e.target.blur();filters={kind:'',status:'',camera:''};disposeCameraMap();await refresh();};
 $('#login-form').onsubmit=async event=>{event.preventDefault();const f=new FormData(event.target),button=$('button',event.target);button.disabled=true;$('#login-error').textContent='';try{state.session=await api('/login',{method:'POST',body:JSON.stringify({username:f.get('username'),password:f.get('password')})});$('input[name=password]',event.target).value='';showWorkspace();}catch(e){$('#login-error').textContent=e.message;}finally{button.disabled=false;}};
 $('#logout').onclick=async()=>{try{await api('/logout',{method:'POST'});}finally{showLogin();}};
 $('#mobile-logout').onclick=$('#logout').onclick;

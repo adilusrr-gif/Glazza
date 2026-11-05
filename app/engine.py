@@ -10,6 +10,7 @@ import uuid
 
 import httpx
 from . import admission
+from .platform import camera_enabled, modules_for, camera_site
 
 log = logging.getLogger('glazza.engine')
 SAFE_ID = re.compile(r'^[a-zA-Z0-9_.-]{1,120}$')
@@ -101,12 +102,12 @@ class Engine:
             score = event.get('data', {}).get('top_score', event.get('top_score'))
             entered = event.get('zones', event.get('entered_zones', [])) or []
             restricted = {z['name'] for z in camera['zones'] if z['restricted']}
-            kind = 'intrusion' if restricted.intersection(entered) else 'person'
+            kind = 'intrusion' if restricted.intersection(entered) and camera_enabled(self.store,camera['id'],'intrusion') else 'person'
             event_id = self.store.event(source='frigate', source_id=source_id, camera=camera['id'], kind=kind,
                                        score=score, started=started, ended=ended, details={'zones': entered, 'has_clip': bool(event.get('has_clip')), 'has_snapshot': bool(event.get('has_snapshot'))})
             admission.ingest(self.store, event_id, source_id, camera['id'], entered, started)
             # Record once per tracked object, including repeated /events polling and restarts.
-            if camera['analyze'] and ended and event.get('has_clip'):
+            if camera['analyze'] and ended and event.get('has_clip') and modules_for(self.store,camera['site_id']) & {'fight','theft','face'}:
                 job_id = str(uuid.UUID(hashlib.md5(('frigate:' + source_id).encode()).hexdigest()))
                 self.store.execute('INSERT OR IGNORE INTO jobs(id,event_id,source_id,camera,state,created,updated) VALUES(?,?,?,?,?,?,?)',
                                    (job_id, event_id, source_id, camera['id'], 'queued', time.time(), time.time()))
@@ -179,7 +180,7 @@ class Engine:
         now = time.time() if now is None else now
         latest = int((now - 20) // 6) * 6
         busy = []
-        cameras = [c for c in self.store.cameras() if c['analyze']]
+        cameras = [c for c in self.store.cameras() if c['analyze'] and camera_enabled(self.store,c['id'],'fight')]
         for camera in cameras:
             key = 'fight_cursor:' + camera['id']
             cursor = self.store.rows('SELECT value FROM meta WHERE key=?', (key,))
@@ -250,7 +251,7 @@ class Engine:
             if detection.get('kind') not in by_kind or detection['score'] > by_kind[detection['kind']]['score']:
                 by_kind[detection['kind']] = detection
         for detection in by_kind.values():
-            if detection.get('kind') not in ('fight', 'theft'):
+            if detection.get('kind') not in ('fight', 'theft') or detection['kind'] not in modules_for(self.store,job.get('site_id') or camera_site(self.store,job['camera'])):
                 continue
             start = job.get('clip_start')
             started = (start + detection.get('start_seconds', 0)) if start is not None else job['created']
@@ -263,7 +264,7 @@ class Engine:
                              kind=detection['kind'], score=detection['score'], started=started, ended=ended,
                              details={'job_id': job['id'], 'origin_event': job.get('event_id'), 'model': detection.get('model', result.get('model')), 'label': detection.get('label'),
                                       'start_seconds': detection.get('start_seconds'), 'end_seconds': detection.get('end_seconds'),
-                                      'rolling': start is not None, 'review_required': True})
+                                      'rolling': start is not None, 'review_required': True}, site_id=job.get('site_id'))
         self.store.execute("UPDATE jobs SET state='succeeded',result=?,error=NULL,updated=? WHERE id=?", (json.dumps(result, ensure_ascii=False), time.time(), job['id']))
 
     async def work(self):
@@ -287,7 +288,7 @@ class Engine:
                     raise RuntimeError('Видео больше не доступно')
                 await self.download_clip(job, path)
             self.store.execute('UPDATE jobs SET file=? WHERE id=?', (path.name, job['id']))
-            response = await self.client.post(self.settings.analyzer_url + '/analyze', json={'job_id': job['id'], 'mode': 'fight' if job.get('clip_start') is not None else 'all'},
+            response = await self.client.post(self.settings.analyzer_url + '/analyze', json={'job_id': job['id'], 'mode': 'fight' if job.get('clip_start') is not None else 'all', 'modules': sorted(modules_for(self.store,job.get('site_id') or camera_site(self.store,job['camera'])) & {'fight','theft','face'})},
                                               headers={'X-Worker-Key': self.settings.worker_key}, timeout=600)
             response.raise_for_status()
             self.apply_result(job, response.json())

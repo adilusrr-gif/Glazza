@@ -8,11 +8,13 @@ from typing import Literal
 
 from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, model_validator
+from .platform import check_site, camera_site, camera_enabled
 
 MODEL = 'opencv-sface-2021dec'
 
 
 class Person(BaseModel):
+    site_id: str = 'default'
     name: str = Field(min_length=2, max_length=120)
     category: Literal['student', 'staff', 'guest']
     valid_from: float = Field(ge=0, le=4102444800)
@@ -57,16 +59,22 @@ def initialize(store):
           UNIQUE(camera,source_id,direction));
         CREATE INDEX IF NOT EXISTS admission_pending ON admission_entries(state,at);
         ''')
+        for table in ('admission_people','admission_entries'):
+            columns={r['name'] for r in db.execute(f'PRAGMA table_info({table})')}
+            if 'site_id' not in columns:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN site_id TEXT NOT NULL DEFAULT 'default'")
+                if table=='admission_entries':
+                    db.execute("UPDATE admission_entries SET site_id=COALESCE((SELECT site_id FROM cameras WHERE id=admission_entries.camera),'default')")
 
 
-def candidate(store, vector, at):
+def candidate(store, vector, at, site_id='default'):
     if len(vector) != 128 or not all(isinstance(x, (int, float)) and math.isfinite(x) for x in vector):
         raise ValueError('Invalid face descriptor')
     norm = math.sqrt(sum(x*x for x in vector))
     if norm < .5:
         raise ValueError('Empty descriptor')
     matches = []
-    for p in store.rows('SELECT id,embedding FROM admission_people WHERE enabled=1 AND valid_from<=? AND valid_until>=? AND model=? AND embedding IS NOT NULL', (at, at, MODEL)):
+    for p in store.rows('SELECT id,embedding FROM admission_people WHERE enabled=1 AND valid_from<=? AND valid_until>=? AND model=? AND embedding IS NOT NULL AND site_id=?', (at, at, MODEL, site_id)):
         other = json.loads(p['embedding'])
         score = sum(a*b for a,b in zip(vector, other)) / norm
         matches.append((score, p['id']))
@@ -82,11 +90,11 @@ def candidate(store, vector, at):
 
 def ingest(store, event_id, source_id, camera, zones, at):
     rules = store.rows('SELECT * FROM admission_entrances WHERE camera=? AND enabled=1', (camera,))
-    if not rules or rules[0]['zone'] not in zones:
+    if not camera_enabled(store,camera,'admission') or not rules or rules[0]['zone'] not in zones:
         return
     r = rules[0]
-    store.execute('INSERT OR IGNORE INTO admission_entries(id,event_id,source_id,camera,direction,at) VALUES(?,?,?,?,?,?)',
-                  (str(uuid.uuid4()),event_id,source_id,camera,r['direction'],at))
+    store.execute('INSERT OR IGNORE INTO admission_entries(id,event_id,source_id,camera,direction,at,site_id) VALUES(?,?,?,?,?,?,?)',
+                  (str(uuid.uuid4()),event_id,source_id,camera,r['direction'],at,camera_site(store,camera)))
 
 
 async def process(engine):
@@ -105,7 +113,7 @@ async def process(engine):
                 headers={'X-Worker-Key':engine.settings.worker_key,'Content-Type':'image/jpeg'}, timeout=15)
             response.raise_for_status()
             data = response.json()
-            person, score, reason = candidate(store, data['embedding'], entry['at'])
+            person, score, reason = candidate(store, data['embedding'], entry['at'], entry['site_id'])
             store.execute("UPDATE admission_entries SET state='review',reason=?,candidate_id=?,score=? WHERE id=? AND state='pending'", (reason, person, score, entry['id']))
         except Exception:
             attempts = entry['attempts'] + 1
@@ -117,26 +125,34 @@ def register(app, store, engine, auth, writable):
     initialize(store)
 
     @app.get('/api/admission')
-    def summary(user=Depends(auth)):
-        people = store.rows('SELECT id,name,category,valid_from,valid_until,host,enabled,basis,photo IS NOT NULL AS has_photo FROM admission_people ORDER BY name')
-        entries = store.rows('SELECT e.*,p.name AS candidate_name,r.name AS person_name FROM admission_entries e LEFT JOIN admission_people p ON p.id=e.candidate_id LEFT JOIN admission_people r ON r.id=e.person_id ORDER BY (e.decision IS NULL) DESC,e.at DESC LIMIT 200')
-        return {'people':people,'entrances':store.rows('SELECT * FROM admission_entrances'), 'entries':entries,
-                'pending':store.rows("SELECT count(*) AS n FROM admission_entries WHERE decision IS NULL")[0]['n'],
+    def summary(site_id: str | None = None,user=Depends(auth)):
+        check_site(store,site_id)
+        people = store.rows('SELECT id,name,category,valid_from,valid_until,host,enabled,basis,site_id,photo IS NOT NULL AS has_photo FROM admission_people ORDER BY name')
+        entries = store.rows('SELECT e.*,p.name AS candidate_name,r.name AS person_name FROM admission_entries e LEFT JOIN admission_people p ON p.id=e.candidate_id LEFT JOIN admission_people r ON r.id=e.person_id WHERE (? IS NULL OR e.site_id=?) ORDER BY (e.decision IS NULL) DESC,e.at DESC LIMIT 200', (site_id,site_id))
+        if site_id:
+            people=[p for p in people if p['site_id']==site_id]
+            entries=[e for e in entries if e['site_id']==site_id]
+        return {'people':people,'entrances':store.rows('SELECT r.* FROM admission_entrances r JOIN cameras c ON c.id=r.camera WHERE (? IS NULL OR c.site_id=?)',(site_id,site_id)), 'entries':entries,
+                'pending':store.rows("SELECT count(*) AS n FROM admission_entries WHERE decision IS NULL AND (? IS NULL OR site_id=?)", (site_id,site_id))[0]['n'],
                 'recognition':next((m['state'] for m in engine.health['analyzer'].get('models',[]) if m['id']=='identity'),'unavailable')}
 
     @app.post('/api/admission/people', status_code=201)
     def create(body: Person, user=Depends(auth)):
         writable()
+        check_site(store,body.site_id)
         identifier = str(uuid.uuid4())
         with store.connect() as db:
-            db.execute('INSERT INTO admission_people(id,name,category,valid_from,valid_until,host,enabled,basis,created) VALUES(?,?,?,?,?,?,?,?,?)',
-                (identifier,body.name,body.category,body.valid_from,body.valid_until,body.host,body.enabled,body.basis,time.time()))
+            db.execute('INSERT INTO admission_people(id,name,category,valid_from,valid_until,host,enabled,basis,created,site_id) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                (identifier,body.name,body.category,body.valid_from,body.valid_until,body.host,body.enabled,body.basis,time.time(),body.site_id))
             db.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)',(time.time(),user['username'],'admission.create',identifier,''))
         return {'id':identifier}
 
     @app.put('/api/admission/people/{identifier}')
     def update(identifier: str, body: Person, user=Depends(auth)):
         writable()
+        existing=store.rows('SELECT site_id FROM admission_people WHERE id=?',(identifier,))
+        if not existing: raise HTTPException(404)
+        if 'site_id' in body.model_fields_set and body.site_id!=existing[0]['site_id']: raise HTTPException(422,'Создайте отдельный допуск для другого объекта')
         if not store.execute('UPDATE admission_people SET name=?,category=?,valid_from=?,valid_until=?,host=?,enabled=?,basis=? WHERE id=?',
                 (body.name,body.category,body.valid_from,body.valid_until,body.host,body.enabled,body.basis,identifier)):
             raise HTTPException(404)
@@ -204,7 +220,7 @@ def register(app, store, engine, auth, writable):
             if not entry: raise HTTPException(404)
             if body.decision in ('allowed','guest','exit'):
                 p=db.execute('SELECT * FROM admission_people WHERE id=?',(body.person_id,)).fetchone()
-                if not p or (body.decision != 'exit' and (not p['enabled'] or not p['valid_from']<=now<=p['valid_until'])):
+                if not p or p['site_id'] != entry['site_id'] or (body.decision != 'exit' and (not p['enabled'] or not p['valid_from']<=now<=p['valid_until'])):
                     raise HTTPException(422,'Выберите человека с действующим допуском')
                 if body.decision=='guest' and p['category']!='guest': raise HTTPException(422,'Нужен допуск гостя')
             if body.decision=='exit' and entry['direction']!='exit': raise HTTPException(422,'Это зона входа')

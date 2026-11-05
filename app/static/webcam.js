@@ -81,7 +81,7 @@ async function openWebcam() {
           if (performance.now()-started < 1000) throw new Error('Запись слишком короткая. Запишите хотя бы 5 секунд.');
           const blob = new Blob(chunks,{type:recorder.mimeType});
           $('#webcam-status').textContent = 'Отправляем запись на анализ…';
-          const job = await api('/jobs/upload?source=webcam',{method:'POST',body:blob,headers:{'Content-Type':recorder.mimeType}});
+          const job = await api(scopeUrl('/jobs/upload?source=webcam'),{method:'POST',body:blob,headers:{'Content-Type':recorder.mimeType}});
           if (webcam!==current) return;
           $('#webcam-status').textContent = 'В очереди на анализ';
           $('#webcam-start').textContent = 'Перейти к результату';

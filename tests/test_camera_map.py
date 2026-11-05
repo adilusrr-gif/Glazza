@@ -16,7 +16,7 @@ def test_old_database_migrates_without_losing_camera(tmp_path, camera):
         db.execute('INSERT INTO cameras VALUES(?,?,?,?,?)', (camera['id'], camera['name'], camera['stream'], json.dumps(camera['zones']), 1))
     for _ in range(2):  # Restarts must not repeat or damage the migration.
         store = Store(tmp_path)
-        assert store.cameras(private=True) == [{**camera, 'latitude': None, 'longitude': None}]
+        assert store.cameras(private=True) == [{**camera, 'latitude': None, 'longitude': None, 'site_id':'default'}]
 
 
 def test_location_save_persists_and_preserves_connection(logged, app, camera):
@@ -25,7 +25,7 @@ def test_location_save_persists_and_preserves_connection(logged, app, camera):
     response = logged.put('/api/cameras/entrance/location', json=location)
     assert response.status_code == 200
     assert response.json()['apply_required'] is False
-    assert app.state.store.cameras(private=True) == [{**camera, **location}]
+    assert app.state.store.cameras(private=True) == [{**camera, **location, 'site_id':'default'}]
     assert Store(app.state.settings.data).cameras()[0]['latitude'] == location['latitude']
     assert 'stream' not in logged.get('/api/cameras').json()[0]
     assert app.state.store.rows("SELECT action FROM audit WHERE action='camera.location'")
@@ -35,7 +35,7 @@ def test_location_save_persists_and_preserves_connection(logged, app, camera):
     assert logged.put('/api/cameras/entrance/zones', json={'zones': camera['zones']}).status_code == 200
     assert logged.get('/api/cameras').json()[0]['longitude'] == location['longitude']
     assert logged.put('/api/cameras/entrance/location', json={'latitude': None, 'longitude': None}).status_code == 200
-    assert app.state.store.cameras(private=True) == [{**camera, 'latitude': None, 'longitude': None}]
+    assert app.state.store.cameras(private=True) == [{**camera, 'latitude': None, 'longitude': None, 'site_id':'default'}]
 
 
 def test_create_and_edit_camera_with_location(logged, camera):

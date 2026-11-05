@@ -39,6 +39,7 @@ class CameraLocation(BaseModel):
 
 
 class Camera(CameraLocation):
+    site_id: str = Field(default='default', min_length=1, max_length=80)
     id: str = Field(pattern=r'^[a-z][a-z0-9_]{1,39}$')
     name: str = Field(min_length=1, max_length=80)
     stream: str = Field(min_length=1, max_length=2048)
