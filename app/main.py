@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .admission import register as register_admission
+from .restaurant import register as register_restaurant
 from .platform import register as register_platform, check_site, modules_for
 from .config import Settings
 from .engine import Engine, seed_demo
@@ -35,6 +36,8 @@ def create_app(settings=None, background=True):
         raise RuntimeError('GLAZZA_WORKER_KEY must contain at least 32 characters')
     if not 1 <= settings.retention_days <= 3650:
         raise RuntimeError('GLAZZA_RETENTION_DAYS must be 1..3650')
+    if not 1 <= settings.mqtt_port <= 65535 or not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}', settings.mqtt_prefix):
+        raise RuntimeError('Set a valid GLAZZA_MQTT_PORT and GLAZZA_MQTT_PREFIX')
     store = Store(settings.data)
     (settings.data / 'jobs').mkdir(exist_ok=True, mode=0o700)
     mode = 'demo' if settings.demo else 'live'
@@ -67,7 +70,7 @@ def create_app(settings=None, background=True):
         response = await call_next(request)
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['Referrer-Policy'] = 'same-origin'
+        response.headers['Referrer-Policy'] = 'no-referrer' if request.url.path == '/staff' else 'same-origin'
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data: https://tile.openstreetmap.org; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         if request.url.path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store'
@@ -102,6 +105,7 @@ def create_app(settings=None, background=True):
 
     register_admission(app, store, engine, authenticated, writable)
     register_platform(app, store, engine, authenticated, writable)
+    register_restaurant(app, store, engine, authenticated, writable)
 
     @app.get('/healthz')
     def health():
@@ -181,6 +185,9 @@ def create_app(settings=None, background=True):
         if body.id != camera_id:
             raise HTTPException(422, 'Идентификатор нельзя изменить')
         check_camera_names(body.model_dump())
+        existing = store.rows('SELECT site_id FROM cameras WHERE id=?', (camera_id,))
+        if existing and 'site_id' in body.model_fields_set and existing[0]['site_id'] != body.site_id and engine.restaurant.camera_in_use(camera_id):
+            raise HTTPException(409, 'Сначала удалите привязанные к камере ресторанные столы')
         # Keep locations when older clients update camera connection settings.
         location_fields = {'latitude', 'longitude'} & body.model_fields_set
         location_sql = ',latitude=?,longitude=?' if location_fields else ''
@@ -218,6 +225,8 @@ def create_app(settings=None, background=True):
     @app.delete('/api/cameras/{camera_id}')
     def delete_camera(camera_id: str, user=Depends(authenticated)):
         writable()
+        if engine.restaurant.camera_in_use(camera_id):
+            raise HTTPException(409, 'Сначала удалите привязанные к камере ресторанные столы')
         if not store.execute('DELETE FROM cameras WHERE id=?', (camera_id,)):
             raise HTTPException(404, 'Камера не найдена')
         store.execute('UPDATE events SET ended=? WHERE camera=? AND ended IS NULL', (time.time(), camera_id))
@@ -228,7 +237,16 @@ def create_app(settings=None, background=True):
     @app.post('/api/config/apply')
     async def apply_config(user=Depends(authenticated)):
         writable()
-        atomic_config(settings.frigate_config, store.cameras(private=True))
+        tables = engine.restaurant.configuration_tables()
+        if tables and not settings.mqtt_host:
+            raise HTTPException(422, 'Для ресторанных столов настройте GLAZZA_MQTT_HOST и перезапустите Glazza')
+        mqtt_config = {'enabled': True, 'host': settings.mqtt_host, 'port': settings.mqtt_port,
+                       'topic_prefix': settings.mqtt_prefix, 'client_id': 'glazza-frigate'} if tables else None
+        try:
+            atomic_config(settings.frigate_config, store.cameras(private=True), restaurant_tables=tables, mqtt_config=mqtt_config)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+        engine.restaurant_feed.invalidate()
         store.audit(user['username'], 'config.apply', 'frigate')
         try:
             response = await engine.client.post(settings.frigate_url + '/api/restart')
@@ -388,6 +406,10 @@ def create_app(settings=None, background=True):
         return StreamingResponse(chunks(), status_code=upstream.status_code, headers=headers, media_type='image/jpeg' if kind == 'snapshot' else 'video/mp4')
 
     app.mount('/static', StaticFiles(directory=STATIC), name='static')
+
+    @app.get('/staff')
+    def restaurant_portal():
+        return FileResponse(STATIC / 'staff.html', headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
     @app.get('/')
     def index():

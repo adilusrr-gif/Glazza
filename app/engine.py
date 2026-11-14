@@ -10,6 +10,8 @@ import uuid
 
 import httpx
 from . import admission
+from .restaurant import RestaurantService
+from .restaurant_feed import RestaurantFeed
 from .platform import camera_enabled, modules_for, camera_site
 
 log = logging.getLogger('glazza.engine')
@@ -20,6 +22,8 @@ class Engine:
     def __init__(self, store, settings):
         self.store, self.settings = store, settings
         admission.initialize(store)
+        self.restaurant = RestaurantService(store, settings)
+        self.restaurant_feed = RestaurantFeed(settings)
         self.health = {'frigate': 'starting', 'last_sync': None, 'error': None, 'analyzer': {'state': 'unavailable', 'models': []}}
         self.health['fight_monitor'] = {'state': 'waiting', 'busy_cameras': [], 'skipped_windows': 0}
         # Service-to-service traffic must not leave the Docker network via ambient proxies.
@@ -31,8 +35,25 @@ class Engine:
 
     async def start(self):
         self.store.execute("UPDATE jobs SET state='queued', updated=? WHERE state='running'", (time.time(),))
+        self.restaurant_feed.set_tables(self.restaurant.configuration_tables())
+        self.restaurant_feed.start()
         self.tasks = [asyncio.create_task(self.supervise(name, worker)) for name, worker in
-                      [('poll',self.poll),('analysis',self.work),('cameras',self.poll_camera_signals),('admission',self.admission_work)]]
+                      [('poll',self.poll),('analysis',self.work),('cameras',self.poll_camera_signals),('admission',self.admission_work),
+                       ('restaurant', self.restaurant_work), ('restaurant_delivery', self.restaurant_delivery)]]
+
+    async def restaurant_work(self):
+        while True:
+            if not self.settings.demo:
+                now = time.time()
+                self.restaurant_feed.pump(self.restaurant, self.camera_signal, now=now)
+                self.restaurant.tick(now=now)
+            await asyncio.sleep(1)
+
+    async def restaurant_delivery(self):
+        while True:
+            if not self.settings.demo:
+                await self.restaurant.deliver(self.client)
+            await asyncio.sleep(2)
 
     async def supervise(self, name, worker):
         while True:
@@ -111,6 +132,7 @@ class Engine:
         for task in self.tasks:
             task.cancel()
         await asyncio.gather(*self.tasks, return_exceptions=True)
+        await asyncio.to_thread(self.restaurant_feed.close)
         await self.client.aclose()
 
     def ingest(self, events):
@@ -275,6 +297,7 @@ class Engine:
         self.store.execute("""DELETE FROM events WHERE started < ? AND ended IS NOT NULL
             AND NOT EXISTS(SELECT 1 FROM jobs WHERE event_id=events.id AND state IN ('queued','running'))""", (cutoff,))
         self.store.execute('DELETE FROM audit WHERE at < ?', (cutoff,))
+        self.restaurant.cleanup(now=now)
 
     async def download_clip(self, job, path):
         temporary = path.with_suffix('.part')

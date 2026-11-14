@@ -14,6 +14,7 @@ MODULES = {
  'admission': {'name':'Проверка посетителей','state':'implemented','model':'identity'},
  'theft': {'name':'Экспериментальный анализ возможной кражи','state':'experimental','model':'vadclip'},
  'face': {'name':'Движения лица','state':'implemented','model':'face'},
+ 'restaurant': {'name':'Столы и обслуживание','state':'implemented','model':None},
  'concealment': {'name':'Возможное сокрытие товара','state':'planned','model':None},
  'queue': {'name':'Очереди у касс','state':'planned','model':None},
  'ppe': {'name':'Средства защиты','state':'planned','model':None},
@@ -24,6 +25,7 @@ PROFILES = {
  'general': {'name':'Универсальный объект','defaults':['person','intrusion','fight']},
  'education': {'name':'Образование','defaults':['person','intrusion','fight','admission']},
  'retail': {'name':'Магазин / супермаркет','defaults':['person','intrusion','fight']},
+ 'restaurant': {'name':'Ресторан / кафе','defaults':['person','restaurant']},
  'warehouse': {'name':'Склад / производство','defaults':['person','intrusion','fight','admission']},
  'office': {'name':'Офис / жилой комплекс','defaults':['person','intrusion','admission']},
  'parking': {'name':'Парковка / территория','defaults':['person','intrusion']},
@@ -40,7 +42,7 @@ class CameraSite(BaseModel):
 
 class Site(Organization):
     organization_id: str
-    profile: Literal['general','education','retail','warehouse','office','parking']
+    profile: Literal['general','education','retail','restaurant','warehouse','office','parking']
     modules: list[str] | None = None
 
 
@@ -130,6 +132,9 @@ def register(app,store,engine,auth,writable):
     @app.put('/api/platform/cameras/{camera}/site')
     def assign_camera(camera:str,body:CameraSite,user=Depends(auth)):
         writable();check_site(store,body.site_id)
+        existing=store.rows('SELECT site_id FROM cameras WHERE id=?',(camera,))
+        if existing and existing[0]['site_id'] != body.site_id and engine.restaurant.camera_in_use(camera):
+            raise HTTPException(409,'Сначала удалите привязанные к камере ресторанные столы')
         if not store.execute('UPDATE cameras SET site_id=? WHERE id=?',(body.site_id,camera)):raise HTTPException(404)
         store.audit(user['username'],'camera.site',camera,body.site_id)
         return {'ok':True}
