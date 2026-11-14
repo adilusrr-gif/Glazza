@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#164b9a">
+  <meta name="referrer" content="no-referrer">
+  <title>Glazza · Экран сотрудника</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css?v=map-status-1">
+  <link rel="stylesheet" href="/static/theme.css?v=map-status-1">
+  <link rel="stylesheet" href="/static/restaurant.css?v=restaurant-1">
+  <script src="/static/restaurant.js?v=restaurant-1" defer></script>
+  <script src="/static/staff.js?v=restaurant-1" defer></script>
+</head>
+<body class="restaurant-staff-page">
+  <div class="staff-shell">
+    <header class="staff-header">
+      <div class="staff-brand"><img src="/static/brand-eyes.svg" alt="" aria-hidden="true">glazza<span>.</span></div>
+      <div class="staff-person" id="staff-person" hidden><strong id="staff-name"></strong><span id="staff-role"></span></div>
+      <div class="staff-controls" id="staff-controls" hidden><button class="secondary" id="staff-sound" aria-pressed="false">Включить звук</button><button class="secondary" id="staff-refresh">Обновить</button><button class="secondary" id="staff-logout">Выйти</button></div>
+    </header>
+    <div class="staff-status" id="staff-status" role="status" hidden><span><span class="restaurant-dot" aria-hidden="true"></span><span id="staff-connection">Подключаемся…</span></span><span id="staff-updated"></span></div>
+    <p class="warning-box" id="staff-offline" role="status" hidden>Нет свежего ответа сервера. Показаны последние известные состояния. Действия будут доступны после восстановления связи.</p>
+    <main id="staff-content" tabindex="-1"><section class="staff-access-message"><h1>Экран сотрудника</h1><p id="staff-access-text">Подключаем персональный рабочий экран…</p></section></main>
+    <p class="staff-help" id="staff-help" hidden>Звуковые сигналы работают на открытой странице после нажатия «Включить звук». Для уведомлений при закрытой странице попросите администратора подключить Telegram. «Принято» подтверждает получение сигнала; подход и уборка отмечаются отдельно на столе.</p>
+  </div>
+  <div id="staff-toast" role="status" hidden></div>
+</body>
+</html>

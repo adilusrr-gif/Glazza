@@ -15,6 +15,13 @@ services:
       GLAZZA_DEMO: ${GLAZZA_DEMO:-false}
       GLAZZA_SECURE_COOKIE: ${GLAZZA_SECURE_COOKIE:-false}
       GLAZZA_RETENTION_DAYS: ${GLAZZA_RETENTION_DAYS:-30}
+      GLAZZA_MQTT_HOST: ${GLAZZA_MQTT_HOST:-mqtt}
+      GLAZZA_MQTT_PORT: ${GLAZZA_MQTT_PORT:-1883}
+      GLAZZA_MQTT_PREFIX: ${GLAZZA_MQTT_PREFIX:-frigate}
+      GLAZZA_TELEGRAM_BOT_TOKEN: ${GLAZZA_TELEGRAM_BOT_TOKEN:-}
+    depends_on:
+      mqtt:
+        condition: service_started
     ports:
       - "${GLAZZA_BIND:-127.0.0.1}:${GLAZZA_PORT:-8080}:8080"
     volumes:
@@ -34,11 +41,29 @@ services:
       driver: json-file
       options: {max-size: 10m, max-file: '3'}
 
+  mqtt:
+    image: eclipse-mosquitto:2.0.22
+    restart: unless-stopped
+    user: "1883:1883"
+    volumes:
+      - ./deploy/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+
   frigate:
     image: ghcr.io/blakeblackshear/frigate:0.18.2
     restart: unless-stopped
     shm_size: 256mb
     profiles: [nvr]
+    depends_on:
+      mqtt:
+        condition: service_started
     ports:
       - "127.0.0.1:8971:8971"
     volumes:

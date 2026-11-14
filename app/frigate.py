@@ -12,10 +12,10 @@ def validate_names(cameras):
         raise ValueError('Имя зоны не должно совпадать с идентификатором любой камеры')
 
 
-def make_config(cameras):
+def make_config(cameras, *, restaurant_tables=(), mqtt_config=None):
     validate_names(cameras)
     result = {
-        'mqtt': {'enabled': False},
+        'mqtt': mqtt_config or {'enabled': False},
         'detectors': {'cpu': {'type': 'cpu', 'num_threads': 3}},
         'record': {'enabled': True, 'motion': {'days': 1},
                    'alerts': {'retain': {'days': 7, 'mode': 'motion'}},
@@ -38,12 +38,26 @@ def make_config(cameras):
             'detect': {'enabled': True, 'fps': 5},
             'zones': {z['name']: {'coordinates': ','.join(str(c) for p in z['points'] for c in p), 'objects': ['person'], 'inertia': 3} for z in cam['zones']},
         }
+    names = {c['id'] for c in cameras}
+    zones = {z['name'] for c in cameras for z in c['zones']}
+    for table in restaurant_tables:
+        camera = result['cameras'].get(table['camera'])
+        if camera is None:
+            raise ValueError('Камера ресторанного стола не найдена')
+        if table['zone'] in names or table['zone'] in zones:
+            raise ValueError('Имя зоны ресторанного стола уже занято')
+        zones.add(table['zone'])
+        # These are seating zones, never restricted/intrusion zones.
+        camera['zones'][table['zone']] = {
+            'coordinates': ','.join(str(c) for p in table['points'] for c in p),
+            'objects': ['person'], 'inertia': 3,
+        }
     return result
 
 
-def atomic_config(path: Path, cameras):
+def atomic_config(path: Path, cameras, *, restaurant_tables=(), mqtt_config=None):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    content = yaml.safe_dump(make_config(cameras), allow_unicode=True, sort_keys=False)
+    content = yaml.safe_dump(make_config(cameras, restaurant_tables=restaurant_tables, mqtt_config=mqtt_config), allow_unicode=True, sort_keys=False)
     descriptor, temporary = tempfile.mkstemp(dir=path.parent, suffix='.tmp')
     try:
         with os.fdopen(descriptor, 'w') as handle:

@@ -26,7 +26,7 @@ def test_platform_requires_auth_and_csrf(client,logged):
 def test_profiles_are_explicit_and_planned_modules_cannot_be_enabled(logged):
     p=logged.get('/api/platform').json()
     assert p['access_model']=='single_trusted_administrator'
-    assert {'education','retail','warehouse','office','parking','general'}==set(p['profiles'])
+    assert {'education','retail','warehouse','office','parking','general','restaurant'}==set(p['profiles'])
     assert p['modules']['queue']['state']=='planned'
     org=p['organizations'][0]['id']
     for module in ['queue','pos','missing']:

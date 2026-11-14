@@ -17,6 +17,10 @@ class Settings:
     poll_seconds: float = 5
     max_upload: int = 200 * 1024 * 1024
     retention_days: int = 30
+    mqtt_host: str = ''
+    mqtt_port: int = 1883
+    mqtt_prefix: str = 'frigate'
+    telegram_bot_token: str = ''
 
     @classmethod
     def from_env(cls):
@@ -31,4 +35,8 @@ class Settings:
             demo=os.getenv('GLAZZA_DEMO', 'false').lower() == 'true',
             secure_cookie=os.getenv('GLAZZA_SECURE_COOKIE', 'false').lower() == 'true',
             retention_days=int(os.getenv('GLAZZA_RETENTION_DAYS', '30')),
+            mqtt_host=os.getenv('GLAZZA_MQTT_HOST', ''),
+            mqtt_port=int(os.getenv('GLAZZA_MQTT_PORT', '1883')),
+            mqtt_prefix=os.getenv('GLAZZA_MQTT_PREFIX', 'frigate'),
+            telegram_bot_token=os.getenv('GLAZZA_TELEGRAM_BOT_TOKEN', ''),
         )

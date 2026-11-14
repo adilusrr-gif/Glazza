@@ -2,7 +2,7 @@
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const titles = {platform:'Организации и объекты',admission:'Допуск и посетители',overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
+const titles = {restaurant:'Ресторан',platform:'Организации и объекты',admission:'Допуск и посетители',overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
 const kinds = {intrusion:'Вход в запретную зону', fight:'Возможная драка', theft:'Возможная кража', person:'Человек в кадре'};
 const symbols = {intrusion:'◇', fight:'ϟ', theft:'◈', person:'♙'};
 const statuses = {new:'Не проверено', confirmed:'Подтверждено', dismissed:'Отклонено'};
@@ -28,7 +28,7 @@ function head(title, description, actions = '') { return `<div class="page-head"
 function empty(title, description = '') { return `<div class="empty"><span>◎</span><div class="heading-with-help">${escapeHTML(title)}${description ? help(description) : ""}</div></div>`; }
 function pill(label, type = '') { return `<span class="pill ${type}">${escapeHTML(label)}</span>`; }
 function eventStatus(event) { return pill(statuses[event.status], event.status === 'new' ? 'warning' : event.status === 'dismissed' ? 'neutral' : ''); }
-function showLogin() { window.glazzaLogin.conceal(); hideHelp(); stopWebcam(); disposeCameraMap(); state.session = null; $('#login').hidden = false; $('#workspace').hidden = true; clearInterval(timer); clearInterval(imageTimer); }
+function showLogin() { window.glazzaLogin.conceal(); hideHelp(); stopWebcam(); disposeCameraMap(); state.session = null; resetRestaurantState(); $('#login').hidden = false; $('#workspace').hidden = true; clearInterval(timer); clearInterval(imageTimer); }
 function showWorkspace() {
   $('#login').hidden = true; $('#workspace').hidden = false; $('#demo-banner').hidden = !state.session.demo;
   $('#user-name').textContent = state.session.username;
@@ -40,7 +40,7 @@ async function refresh() {
   if (!state.session || refreshing) return;
   refreshing = true;
   try {
-    const [overview, cameras, events, jobs, cameraStatus, admission, platform, allCameras] = await Promise.all([api(scopeUrl('/overview')), api(scopeUrl('/cameras')), api(scopeUrl('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : ''))), api(scopeUrl('/jobs')), api('/cameras/status'), api(scopeUrl('/admission')), api('/platform'), api('/cameras')]);
+    const [overview, cameras, events, jobs, cameraStatus, admission, platform, allCameras] = await Promise.all([api(scopeUrl('/overview')), api(scopeUrl('/cameras')), api(scopeUrl('/events?limit=200' + (state.view === 'events' ? '&' + new URLSearchParams(Object.entries(filters).filter(([,v])=>v)) : ''))), api(scopeUrl('/jobs')), api('/cameras/status'), api(scopeUrl('/admission')), api('/platform'), api('/cameras'), loadRestaurantData()]);
     Object.assign(state, {overview, cameras, events, jobs, cameraStatus, admission, platform, allCameras});
     updateSiteSelector();
     $('#nav-count').textContent = overview.pending;
@@ -59,14 +59,18 @@ function render() {
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === state.view));
   $('#breadcrumb').textContent = titles[state.view];
   if (state.view !== 'map') disposeCameraMap();
-  const methods = {platform:renderPlatform,admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
+  const methods = {restaurant:renderRestaurant,platform:renderPlatform,admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
   $('#content').classList.toggle('platform-view',state.view==='platform');
+  $('#content').classList.toggle('restaurant-view',state.view==='restaurant');
+  if(state.view!=='restaurant')$('#content').classList.remove('restaurant-stale');
   methods[state.view]();
   renderAlerts();
   bindActions(); refreshImages();
 }
 function renderAlerts() {
   if (!state.overview) return;
+  const restaurantPending=(state.restaurant?.alerts || []).filter(alert=>!alert.ack_at && !alert.resolved_at);
+  const restaurantCount=$('#restaurant-nav-count');if(restaurantCount){restaurantCount.textContent=restaurantPending.length;restaurantCount.hidden=!restaurantPending.length;}
   let restoreFocus = false;
   const remove = selector => {
     const node = $(selector, $('#content'));
