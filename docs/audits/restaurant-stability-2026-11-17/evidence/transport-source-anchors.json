@@ -1,0 +1,37 @@
+[
+  {
+    "file": "app/restaurant_feed.py",
+    "line": 149,
+    "end_line": 152,
+    "sha256": "c825b915f2a7176f76f0b51f1cb3ddaa5c756ce3f6e98d4671f09ff7f82a30a6",
+    "snippet": "            try:\n                cameras = json.loads(value)\n            except (ValueError, TypeError):\n                return"
+  },
+  {
+    "file": "app/restaurant_feed.py",
+    "line": 100,
+    "end_line": 101,
+    "sha256": "c825b915f2a7176f76f0b51f1cb3ddaa5c756ce3f6e98d4671f09ff7f82a30a6",
+    "snippet": "    def _on_message(self, client, userdata, message):\n        self.message(message.topic, message.payload, retained=message.retain)"
+  },
+  {
+    "file": "app/restaurant_feed.py",
+    "line": 67,
+    "end_line": 78,
+    "sha256": "c825b915f2a7176f76f0b51f1cb3ddaa5c756ce3f6e98d4671f09ff7f82a30a6",
+    "snippet": "    def start(self):\n        if not self.settings.mqtt_host or self.settings.demo or self.client:\n            return\n        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,\n                             client_id='glazza-restaurant-' + uuid.uuid4().hex[:12])\n        client.on_connect = self._on_connect\n        client.on_disconnect = self._on_disconnect\n        client.on_message = self._on_message\n        client.reconnect_delay_set(min_delay=1, max_delay=15)\n        client.connect_async(self.settings.mqtt_host, self.settings.mqtt_port, keepalive=20)\n        self.client = client\n        client.loop_start()"
+  },
+  {
+    "file": "app/restaurant.py",
+    "line": 581,
+    "end_line": 624,
+    "sha256": "3d53b0aa1115335ef55fcdac3567371065edca92ebd1ddb7931c291cb6ec4982",
+    "snippet": "    async def deliver(self, client, now=None):\n        \"\"\"Deliver a bounded durable outbox. Telegram has no exactly-once send guarantee.\"\"\"\n        if not getattr(self.settings, 'telegram_bot_token', ''):\n            return\n        now = _at(now)\n        for _ in range(10):\n            with self.store.connect() as db:\n                db.execute('BEGIN IMMEDIATE')\n                row = db.execute('''SELECT a.*,s.telegram_chat_id,s.enabled AS recipient_enabled,s.site_id AS recipient_site\n                    FROM restaurant_alerts a LEFT JOIN restaurant_staff s ON s.id=a.recipient_id\n                    WHERE a.ack_at IS NULL AND a.resolved_at IS NULL AND\n                    ((a.delivery_state='pending' AND a.delivery_attempts<8 AND a.retry_at<=?) OR\n                     (a.delivery_state='sending' AND a.delivery_started<?))\n                    ORDER BY a.at LIMIT 1''', (now, now - 60)).fetchone()\n                if not row:\n                    return\n                alert = dict(row)\n                if alert['delivery_attempts'] >= 8:\n                    # A crash during the final send leaves an uncertain result.\n                    # Make that uncertainty visible instead of claiming a delivery\n                    # or leaving the task in \"sending\" forever.\n                    db.execute(\"UPDATE restaurant_alerts SET delivery_state='failed',delivery_error=? WHERE id=?\", ('Доставка не подтверждена после повторных попыток. Проверьте уведомление вручную.', alert['id']))\n                    continue\n                if not alert['recipient_enabled'] or alert['recipient_site'] != alert['site_id'] or not alert['telegram_chat_id'] or not _module(db, alert['site_id']):\n                    db.execute(\"UPDATE restaurant_alerts SET delivery_state='in_app' WHERE id=?\", (alert['id'],))\n                    continue\n                db.execute(\"UPDATE restaurant_alerts SET delivery_state='sending',delivery_started=?,delivery_attempts=delivery_attempts+1 WHERE id=?\", (now, alert['id']))\n            error = None\n            try:\n                response = await client.post('https://api.telegram.org/bot' + self.settings.telegram_bot_token + '/sendMessage',\n                                             json={'chat_id': alert['telegram_chat_id'], 'text': alert['message']}, timeout=10)\n                response.raise_for_status()\n                if response.json().get('ok') is not True:\n                    raise ValueError('Delivery rejected')\n            except (httpx.HTTPError, ValueError, TypeError, AttributeError):\n                error = 'Не удалось доставить сообщение. Проверьте бота и chat ID.'\n            with self.store.connect() as db:\n                db.execute('BEGIN IMMEDIATE')\n                if error:\n                    attempts = alert['delivery_attempts'] + 1\n                    db.execute(\"UPDATE restaurant_alerts SET delivery_state=?,retry_at=?,delivery_error=? WHERE id=? AND delivery_state='sending'\",\n                               ('failed' if attempts >= 8 else 'pending', now + min(300, 5 * 2 ** attempts), error, alert['id']))\n                else:\n                    db.execute(\"UPDATE restaurant_alerts SET delivery_state='sent',delivered_at=?,delivery_error=NULL WHERE id=? AND delivery_state='sending'\", (now, alert['id']))"
+  },
+  {
+    "file": "app/engine.py",
+    "line": 44,
+    "end_line": 56,
+    "sha256": "b7ccece9a663e93b740af872209058d107cd930864bff93ee1c14c1037e28424",
+    "snippet": "    async def restaurant_work(self):\n        while True:\n            if not self.settings.demo:\n                now = time.time()\n                self.restaurant_feed.pump(self.restaurant, self.camera_signal, now=now)\n                self.restaurant.tick(now=now)\n            await asyncio.sleep(1)\n\n    async def restaurant_delivery(self):\n        while True:\n            if not self.settings.demo:\n                await self.restaurant.deliver(self.client)\n            await asyncio.sleep(2)"
+  }
+]

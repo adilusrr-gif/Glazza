@@ -1,0 +1,17 @@
+{
+  "environment": "Actual Engine.restaurant_work and Store on temporary SQLite; deliberate external writer lock; real elapsed time",
+  "observed": {
+    "writer_lock_s": 3.0001532719998067,
+    "heartbeat_target_s": 0.02,
+    "maximum_heartbeat_gap_s": 2.344724201000645,
+    "warmup_maximum_gap_s": 0.020229280000421568,
+    "heartbeat_samples": 95,
+    "database_integrity": "ok"
+  },
+  "expected": "Blocking SQLite lock acquisition must not suspend the shared async event loop.",
+  "source": [
+    "app/engine.py:44",
+    "app/restaurant.py:433",
+    "app/store.py:56"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "state": "verified",
+  "environment": "Fresh independent temporary DB, real SIGKILL at committed boundaries, controlled timestamps",
+  "sigkill_events": [
+    {
+      "operation": "arrival_committed",
+      "boundary": "committed",
+      "exit_code": -9
+    },
+    {
+      "operation": "deadline_committed",
+      "boundary": "committed",
+      "exit_code": -9
+    }
+  ],
+  "deadline_offset_seconds": 120.0,
+  "escalations_at_119_5_seconds": 0,
+  "escalations_after_120_seconds_and_restarts": 1,
+  "same_visit_id_after_restart": true,
+  "integrity_check": "ok"
+}

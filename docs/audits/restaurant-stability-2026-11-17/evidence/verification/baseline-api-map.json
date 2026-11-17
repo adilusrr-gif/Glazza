@@ -1,0 +1,643 @@
+{
+  "schema_version": "1.0",
+  "agent": "data-integrity-evidence-auditor",
+  "basis": [
+    "evidence/baseline-junit.xml",
+    "evidence/baseline-pytest.log",
+    "tests/test_restaurant.py",
+    "tests/stability/state_review_alerts.py"
+  ],
+  "method": "Source-to-executed-JUnit mapping of concrete HTTP calls, including restaurant fixture and action helper. Does not infer endpoint completeness from211 aggregate tests.",
+  "baseline": {
+    "total_tests": 211,
+    "restaurant_tests": 23,
+    "restaurant_tests_failed": 0,
+    "restaurant_http_surfaces": 12,
+    "surfaces_with_concrete_http_calls": 11,
+    "surfaces_without_concrete_http_call": 1
+  },
+  "endpoints": [
+    {
+      "surface_id": "api:GET:/api/restaurant",
+      "method": "GET",
+      "path": "/api/restaurant",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_staff_tokens_scoped_rotatable_and_no_secrets_in_snapshots",
+          "source": "tests/test_restaurant.py:231",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_camera_guards_and_unknown_site",
+          "source": "tests/test_restaurant.py:364",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Authenticated snapshot returns JSON without staff tokens or token hashes",
+        "Bearer-only manager credentials are rejected401 by admin API",
+        "Unknown site filter returns404"
+      ],
+      "uncovered_contracts": [
+        "All schema fields/content variants",
+        "Large-history active-alert visibility on admin endpoint"
+      ],
+      "baseline_variants": [
+        "HTTP TestClient"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff",
+      "method": "POST",
+      "path": "/api/restaurant/staff",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_initial_unknown_never_claims_clean_table",
+          "source": "tests/test_restaurant.py:70",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_seated_once_and_exact_120_second_escalation",
+          "source": "tests/test_restaurant.py:83",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_acknowledgement_is_not_greeting",
+          "source": "tests/test_restaurant.py:108",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_greeting_keeps_table_red_and_stops_first_contact_timer",
+          "source": "tests/test_restaurant.py:120",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_restart_preserves_deadline_and_logical_alerts",
+          "source": "tests/test_restaurant.py:136",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_short_absence_other_guests_and_unknown_feed_do_not_end_visit",
+          "source": "tests/test_restaurant.py:156",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_hold_preserves_temporary_absence_and_resume_starts_fresh_grace",
+          "source": "tests/test_restaurant.py:180",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_stale_cleaning_task_cannot_clear_new_guests",
+          "source": "tests/test_restaurant.py:195",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_out_of_order_missing_and_invalid_counts_are_not_vacancy",
+          "source": "tests/test_restaurant.py:208",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_worker_stall_snapshot_becomes_gray_without_tick",
+          "source": "tests/test_restaurant.py:221",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_staff_tokens_scoped_rotatable_and_no_secrets_in_snapshots",
+          "source": "tests/test_restaurant.py:231",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_waiter_cannot_see_or_act_on_other_waiters_table_or_alert",
+          "source": "tests/test_restaurant.py:256",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_disabled_staff_link_and_cross_site_assignment",
+          "source": "tests/test_restaurant.py:273",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_geometry_change_requires_new_zone_and_active_visit_guard",
+          "source": "tests/test_restaurant.py:287",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_module_off_stops_configuration_and_alerts",
+          "source": "tests/test_restaurant.py:301",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_invalid_input_and_csrf_do_not_change_configuration",
+          "source": "tests/test_restaurant.py:313",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_missing_waiter_routes_arrival_to_manager_and_keeps_diagnostic",
+          "source": "tests/test_restaurant.py:321",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_telegram_outbox_retries_and_does_not_send_resolved_tasks",
+          "source": "tests/test_restaurant.py:331",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_camera_guards_and_unknown_site",
+          "source": "tests/test_restaurant.py:364",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_manager_replacement_inherits_unresolved_escalation",
+          "source": "tests/test_restaurant.py:370",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_moved_manager_does_not_receive_old_site_pending_delivery",
+          "source": "tests/test_restaurant.py:386",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_retention_preserves_current_visit_and_cleans_completed_history",
+          "source": "tests/test_restaurant.py:410",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_crashed_last_delivery_attempt_becomes_visible_failure",
+          "source": "tests/test_restaurant.py:425",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "The restaurant fixture POSTs manager,waiter,cleaner and asserts201 before every restaurant test",
+        "Additional manager/waiter creation and usable portal token are exercised"
+      ],
+      "uncovered_contracts": [
+        "Invalid staff body/role/chat ID",
+        "Unauthenticated/CSRF negative variants for this endpoint"
+      ],
+      "baseline_variants": [
+        "fixture setup at tests/test_restaurant.py:20-26"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/staff/{identifier}",
+      "method": "PUT",
+      "path": "/api/restaurant/staff/{identifier}",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_disabled_staff_link_and_cross_site_assignment",
+          "source": "tests/test_restaurant.py:273",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_manager_replacement_inherits_unresolved_escalation",
+          "source": "tests/test_restaurant.py:370",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_moved_manager_does_not_receive_old_site_pending_delivery",
+          "source": "tests/test_restaurant.py:386",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Disable returns200 and revoked portal returns401",
+        "Replacement manager inherits active escalation",
+        "Moving manager to another site cancels old-site pending delivery"
+      ],
+      "uncovered_contracts": [
+        "HTTP assigned-role/site-move rejection",
+        "Malformed staff edits",
+        "Unknown employee id"
+      ],
+      "baseline_variants": [
+        "HTTP TestClient"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff/{identifier}/token",
+      "method": "POST",
+      "path": "/api/restaurant/staff/{identifier}/token",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_staff_tokens_scoped_rotatable_and_no_secrets_in_snapshots",
+          "source": "tests/test_restaurant.py:231",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Token rotation response yields a new usable token",
+        "Old token401;new token200 on portal"
+      ],
+      "uncovered_contracts": [
+        "Unknown employee id",
+        "Missing admin/CSRF rejection on rotation endpoint"
+      ],
+      "baseline_variants": [
+        "HTTP TestClient"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables",
+      "method": "POST",
+      "path": "/api/restaurant/tables",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_initial_unknown_never_claims_clean_table",
+          "source": "tests/test_restaurant.py:70",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_seated_once_and_exact_120_second_escalation",
+          "source": "tests/test_restaurant.py:83",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_acknowledgement_is_not_greeting",
+          "source": "tests/test_restaurant.py:108",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_greeting_keeps_table_red_and_stops_first_contact_timer",
+          "source": "tests/test_restaurant.py:120",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_restart_preserves_deadline_and_logical_alerts",
+          "source": "tests/test_restaurant.py:136",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_short_absence_other_guests_and_unknown_feed_do_not_end_visit",
+          "source": "tests/test_restaurant.py:156",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_hold_preserves_temporary_absence_and_resume_starts_fresh_grace",
+          "source": "tests/test_restaurant.py:180",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_stale_cleaning_task_cannot_clear_new_guests",
+          "source": "tests/test_restaurant.py:195",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_out_of_order_missing_and_invalid_counts_are_not_vacancy",
+          "source": "tests/test_restaurant.py:208",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_worker_stall_snapshot_becomes_gray_without_tick",
+          "source": "tests/test_restaurant.py:221",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_staff_tokens_scoped_rotatable_and_no_secrets_in_snapshots",
+          "source": "tests/test_restaurant.py:231",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_waiter_cannot_see_or_act_on_other_waiters_table_or_alert",
+          "source": "tests/test_restaurant.py:256",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_disabled_staff_link_and_cross_site_assignment",
+          "source": "tests/test_restaurant.py:273",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_geometry_change_requires_new_zone_and_active_visit_guard",
+          "source": "tests/test_restaurant.py:287",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_module_off_stops_configuration_and_alerts",
+          "source": "tests/test_restaurant.py:301",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_invalid_input_and_csrf_do_not_change_configuration",
+          "source": "tests/test_restaurant.py:313",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_missing_waiter_routes_arrival_to_manager_and_keeps_diagnostic",
+          "source": "tests/test_restaurant.py:321",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_telegram_outbox_retries_and_does_not_send_resolved_tasks",
+          "source": "tests/test_restaurant.py:331",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_camera_guards_and_unknown_site",
+          "source": "tests/test_restaurant.py:364",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_manager_replacement_inherits_unresolved_escalation",
+          "source": "tests/test_restaurant.py:370",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_moved_manager_does_not_receive_old_site_pending_delivery",
+          "source": "tests/test_restaurant.py:386",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_retention_preserves_current_visit_and_cleans_completed_history",
+          "source": "tests/test_restaurant.py:410",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_crashed_last_delivery_attempt_becomes_visible_failure",
+          "source": "tests/test_restaurant.py:425",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Fixture creates a valid configured table and asserts201",
+        "Invalid wait_seconds,boolean arrival_seconds,invalid polygon,blank name return422",
+        "Bad CSRF returns403",
+        "Additional assigned table creation is exercised"
+      ],
+      "uncovered_contracts": [
+        "Duplicate table name",
+        "Unknown camera/site",
+        "Missing admin cookie"
+      ],
+      "baseline_variants": [
+        "fixture setup at tests/test_restaurant.py:28-33",
+        "test_invalid_input_and_csrf_do_not_change_configuration"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/tables/{identifier}",
+      "method": "PUT",
+      "path": "/api/restaurant/tables/{identifier}",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_disabled_staff_link_and_cross_site_assignment",
+          "source": "tests/test_restaurant.py:273",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_geometry_change_requires_new_zone_and_active_visit_guard",
+          "source": "tests/test_restaurant.py:287",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_missing_waiter_routes_arrival_to_manager_and_keeps_diagnostic",
+          "source": "tests/test_restaurant.py:321",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Cross-site waiter assignment422",
+        "Idle geometry edit200 with new zone/apply_required",
+        "Active visit geometry edit409",
+        "Removing waiter200 routes arrival to manager and diagnostic"
+      ],
+      "uncovered_contracts": [
+        "Malformed input variants on PUT",
+        "Unknown table id",
+        "Missing admin/CSRF negative variants"
+      ],
+      "baseline_variants": [
+        "HTTP TestClient"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:DELETE:/api/restaurant/tables/{identifier}",
+      "method": "DELETE",
+      "path": "/api/restaurant/tables/{identifier}",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_geometry_change_requires_new_zone_and_active_visit_guard",
+          "source": "tests/test_restaurant.py:287",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Deleting table with active visit returns409"
+      ],
+      "uncovered_contracts": [
+        "Successful idle deletion",
+        "Unknown id404",
+        "Missing admin/CSRF negative variants"
+      ],
+      "baseline_variants": [
+        "rejection branch only;not a complete DELETE journey"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables/{identifier}/actions",
+      "method": "POST",
+      "path": "/api/restaurant/tables/{identifier}/actions",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_initial_unknown_never_claims_clean_table",
+          "source": "tests/test_restaurant.py:70",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_greeting_keeps_table_red_and_stops_first_contact_timer",
+          "source": "tests/test_restaurant.py:120",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_hold_preserves_temporary_absence_and_resume_starts_fresh_grace",
+          "source": "tests/test_restaurant.py:180",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_stale_cleaning_task_cannot_clear_new_guests",
+          "source": "tests/test_restaurant.py:195",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_module_off_stops_configuration_and_alerts",
+          "source": "tests/test_restaurant.py:301",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_telegram_outbox_retries_and_does_not_send_resolved_tasks",
+          "source": "tests/test_restaurant.py:331",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_retention_preserves_current_visit_and_cleans_completed_history",
+          "source": "tests/test_restaurant.py:410",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_invalid_input_and_csrf_do_not_change_configuration",
+          "source": "tests/test_restaurant.py:313",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Shared action helper POSTs visit_id+revision",
+        "Fresh empty cleanup200;unknown/occupied/stale-visit cleanup409",
+        "Greeting200 preserves original timestamp on replay",
+        "Hold/resume200 preserves visit and restarts absence interval",
+        "Disabled module action409",
+        "Missing visit_id422"
+      ],
+      "uncovered_contracts": [
+        "Every action xrole xsite HTTP combination",
+        "Absent admin/CSRF negative variants on this endpoint"
+      ],
+      "baseline_variants": [
+        "action helper tests/test_restaurant.py:60-63"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "method": "POST",
+      "path": "/api/restaurant/alerts/{identifier}/ack",
+      "baseline_exercised": false,
+      "baseline_tests": [],
+      "verified_contracts": [],
+      "uncovered_contracts": [
+        "No invocation found in executed restaurant pytest suite or executed new state/visibility harnesses",
+        "Successful admin acknowledgement,missing id,authorization/CSRF all untested in this mapping"
+      ],
+      "baseline_variants": [
+        "HTTP TestClient"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant/portal",
+      "method": "GET",
+      "path": "/api/restaurant/portal",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_staff_tokens_scoped_rotatable_and_no_secrets_in_snapshots",
+          "source": "tests/test_restaurant.py:231",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_waiter_cannot_see_or_act_on_other_waiters_table_or_alert",
+          "source": "tests/test_restaurant.py:256",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_disabled_staff_link_and_cross_site_assignment",
+          "source": "tests/test_restaurant.py:273",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_manager_replacement_inherits_unresolved_escalation",
+          "source": "tests/test_restaurant.py:370",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Own assigned tables,role and allowed_actions",
+        "No tokens/hashes in payload",
+        "Other waiter table excluded;other site has no assigned tables",
+        "Rotated/disabled token401;new token200",
+        "Replacement manager sees escalation"
+      ],
+      "uncovered_contracts": [
+        "No full token-format/rate-limit matrix"
+      ],
+      "baseline_variants": [
+        "HTTP TestClient"
+      ],
+      "additional_evidence": [
+        {
+          "artifact": "evidence/verification/state-review-alerts.json",
+          "harness": "tests/stability/state_review_alerts.py",
+          "result": "failed active-alert visibility invariant at200 newer closed manager records",
+          "finding_id": "ROOT-ALERT-001"
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "method": "POST",
+      "path": "/api/restaurant/portal/tables/{identifier}/actions",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_waiter_cannot_see_or_act_on_other_waiters_table_or_alert",
+          "source": "tests/test_restaurant.py:256",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Waiter touching another waiter table403",
+        "Cleaner attempting greeted409"
+      ],
+      "uncovered_contracts": [
+        "Successful portal action in baseline pytest",
+        "Other action/role/site matrix",
+        "Stale token/visit/revision via HTTP portal"
+      ],
+      "baseline_variants": [
+        "rejection branches only;service-level positive action checks are not HTTP portal coverage"
+      ],
+      "additional_evidence": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "method": "POST",
+      "path": "/api/restaurant/portal/alerts/{identifier}/ack",
+      "baseline_exercised": true,
+      "baseline_tests": [
+        {
+          "nodeid": "tests/test_restaurant.py::test_acknowledgement_is_not_greeting",
+          "source": "tests/test_restaurant.py:108",
+          "junit": "passed"
+        },
+        {
+          "nodeid": "tests/test_restaurant.py::test_waiter_cannot_see_or_act_on_other_waiters_table_or_alert",
+          "source": "tests/test_restaurant.py:256",
+          "junit": "passed"
+        }
+      ],
+      "verified_contracts": [
+        "Own acknowledgement200",
+        "Acknowledgement does not mark greeted or suppress120s escalation",
+        "Another employee acknowledgement403"
+      ],
+      "uncovered_contracts": [
+        "Unknown alert id404",
+        "Revoked token HTTP acknowledgement",
+        "Repeated acknowledgement via HTTP"
+      ],
+      "baseline_variants": [
+        "HTTP TestClient"
+      ],
+      "additional_evidence": []
+    }
+  ],
+  "limitations": [
+    "No request-level coverage trace was captured by baseline pytest; mapping proves executed test bodies and their asserted calls.",
+    "Passing a listed variant does not establish all endpoint contracts. DELETE and portal table actions have rejection-only coverage in baseline.",
+    "Other specialists may add independent completed-load/browser evidence; it is not claimed here."
+  ]
+}

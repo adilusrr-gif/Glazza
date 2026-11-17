@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "project": "Glazza",
+  "mode": "pr",
+  "scope": "Restaurant module stability and affected shared database/background jobs",
+  "target_commit": "98a22174f44097d53c12e1febb870951ff914aba",
+  "started_at": "2026-11-17T06:17:16.142461+00:00",
+  "environment": "Disposable local databases, loopback HTTP/MQTT, synthetic camera observations, mocked Telegram; no production access",
+  "authorization": "User requested stability testing; local load, fault and process restart tests are confined to disposable fixtures",
+  "product_code_changes": false,
+  "excluded": [
+    "Physical camera/model accuracy",
+    "Production deployment",
+    "Real Telegram messages",
+    "New security penetration audit of unrelated modules"
+  ],
+  "runtime_limitation": "project-sentinel CLI/runtime is absent from the installed skill package and PATH; manual inventory and evidence-contract artifacts are used; no canonical weighted score will be claimed"
+}

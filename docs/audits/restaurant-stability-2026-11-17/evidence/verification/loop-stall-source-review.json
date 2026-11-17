@@ -1,0 +1,21 @@
+{
+  "reviewer": "data-integrity-evidence-auditor",
+  "method": "Review of original measured artifact, executable harness and verified source; no additional runtime replay",
+  "artifact": "evidence/loop-stall.json",
+  "harness": "tests/stability/restaurant_loop_stall.py",
+  "source": [
+    "app/engine.py:44-50",
+    "app/store.py:54-65",
+    "app/restaurant.py:430-433"
+  ],
+  "permitted_claim": "On a disposable database, deliberately holding a separate SQLite writer transaction for 3.000s caused a maximum shared event-loop heartbeat gap of 2.345s, against a20ms target and 0.020s warmup maximum.",
+  "severity_assessment": "medium is supported for a bounded fault-induced resilience defect; no data corruption observed",
+  "causal_support": "Engine.restaurant_work calls synchronous pump/tick directly on the asyncio event loop; tick obtains BEGIN IMMEDIATE; Store uses a synchronous sqlite3 connection with15s busy timeout. A held writer makes lock acquisition block the shared loop.",
+  "limitations": [
+    "Not normal-operation latency or measured production impact.",
+    "No claim that all user requests were observed delayed; only the co-scheduled heartbeat was measured.",
+    "One deliberate3s writer-lock scenario; frequency in real workloads and longer-lock behavior not measured.",
+    "Database integrity remained ok.",
+    "This review adds source/artifact corroboration, not an independent runtime reproduction."
+  ]
+}

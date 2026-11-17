@@ -1,0 +1,86 @@
+{
+  "protocol": "real loopback TCP MQTT",
+  "publisher": "synthetic NVR",
+  "checks": [
+    {
+      "case": "stationary_guest",
+      "status": "passed",
+      "people": 1
+    },
+    {
+      "case": "broker_sigkill_restart",
+      "status": "passed",
+      "cycles": 8,
+      "recovery_seconds": [
+        1.0719743080007902,
+        1.050222293000843,
+        1.0630308960007824,
+        1.0542966489992978,
+        1.0632017879997875,
+        1.05349700700026,
+        1.0508249470003648,
+        1.069727177000459
+      ],
+      "visit_preserved": true,
+      "deadline_preserved": true
+    },
+    {
+      "case": "detect_off_on",
+      "status": "passed",
+      "visit_preserved": true
+    },
+    {
+      "case": "enabled_off_on",
+      "status": "passed",
+      "visit_preserved": true
+    },
+    {
+      "case": "zone_off_on",
+      "status": "passed",
+      "visit_preserved": true
+    },
+    {
+      "case": "camera_fps_offline",
+      "status": "passed"
+    },
+    {
+      "case": "partial_snapshot",
+      "status": "passed"
+    },
+    {
+      "case": "retained_stale_empty_replay",
+      "status": "passed"
+    },
+    {
+      "case": "snapshot_silence_16_seconds",
+      "status": "passed",
+      "elapsed_seconds": 16.03265994100002
+    },
+    {
+      "case": "late_table_binding",
+      "status": "passed"
+    },
+    {
+      "case": "bounded_malformed_inputs",
+      "status": "passed",
+      "payloads": 5
+    },
+    {
+      "case": "deep_json_thread_survival",
+      "status": "failed",
+      "payload_bytes": 40001,
+      "thread_alive": false,
+      "connected_flag": true,
+      "valid_snapshot_processed_after_fault": false,
+      "exceptions": [
+        {
+          "type": "RecursionError",
+          "message": "maximum recursion depth exceeded while decoding a JSON array from a unicode string",
+          "traceback": "Traceback (most recent call last):\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/threading.py\", line 1075, in _bootstrap_inner\n    self.run()\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/threading.py\", line 1012, in run\n    self._target(*self._args, **self._kwargs)\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 4523, in _thread_main\n    self.loop_forever(retry_first_connection=True)\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 2297, in loop_forever\n    rc = self._loop(timeout)\n         ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 1686, in _loop\n    rc = self.loop_read()\n         ^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 2100, in loop_read\n    rc = self._packet_read()\n         ^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 3142, in _packet_read\n    rc = self._packet_handle()\n         ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 3808, in _packet_handle\n    return self._handle_publish()\n           ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 4148, in _handle_publish\n    self._handle_on_message(message)\n  File \"/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/paho/mqtt/client.py\", line 4501, in _handle_on_message\n    on_message(self, self._userdata, message)\n  File \"/workspace/scratch/160f893adec1/Glazza/app/restaurant_feed.py\", line 101, in _on_message\n    self.message(message.topic, message.payload, retained=message.retain)\n  File \"/workspace/scratch/160f893adec1/Glazza/app/restaurant_feed.py\", line 150, in message\n    cameras = json.loads(value)\n              ^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/__init__.py\", line 346, in loads\n    return _default_decoder.decode(s)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/decoder.py\", line 338, in decode\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/json/decoder.py\", line 354, in raw_decode\n    obj, end = self.scan_once(s, idx)\n               ^^^^^^^^^^^^^^^^^^^^^^\nRecursionError: maximum recursion depth exceeded while decoding a JSON array from a unicode string\n"
+        }
+      ],
+      "expected": "Malformed message is ignored; MQTT worker continues to accept subsequent valid snapshots"
+    }
+  ],
+  "snapshot_requests": 14
+}

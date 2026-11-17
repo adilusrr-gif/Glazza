@@ -1,0 +1,197 @@
+{
+  "schema_version": "1.0",
+  "agent": "api-map-evidence-auditor",
+  "scope": {
+    "project": ".",
+    "mode": "pr",
+    "surfaces": [
+      "api:GET:/api/restaurant",
+      "api:POST:/api/restaurant/staff",
+      "api:PUT:/api/restaurant/staff/{identifier}",
+      "api:POST:/api/restaurant/staff/{identifier}/token",
+      "api:POST:/api/restaurant/tables",
+      "api:PUT:/api/restaurant/tables/{identifier}",
+      "api:DELETE:/api/restaurant/tables/{identifier}",
+      "api:POST:/api/restaurant/tables/{identifier}/actions",
+      "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "api:GET:/api/restaurant/portal",
+      "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "api:POST:/api/restaurant/portal/alerts/{identifier}/ack"
+    ],
+    "environment": "Executed pytest TestClient evidence plus separate independent HTTP visibility fixture"
+  },
+  "summary": {
+    "discovered": 12,
+    "tested": 11,
+    "passed": 10,
+    "failed": 1,
+    "blocked": 0
+  },
+  "discovered_surfaces": [],
+  "findings": [],
+  "coverage": [
+    {
+      "surface_id": "api:GET:/api/restaurant",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "HTTP TestClient"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "fixture setup at tests/test_restaurant.py:20-26"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/staff/{identifier}",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "HTTP TestClient"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff/{identifier}/token",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "HTTP TestClient"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "fixture setup at tests/test_restaurant.py:28-33",
+        "test_invalid_input_and_csrf_do_not_change_configuration"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/tables/{identifier}",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "HTTP TestClient"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:DELETE:/api/restaurant/tables/{identifier}",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "rejection branch only;not a complete DELETE journey"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables/{identifier}/actions",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "action helper tests/test_restaurant.py:60-63"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant/portal",
+      "domain": "api",
+      "status": "failed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log",
+        "evidence/verification/state-review-alerts.json"
+      ],
+      "variants": [
+        "HTTP TestClient"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed. Additional visibility fault ROOT-ALERT-001 is independently reproduced."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "rejection branches only;service-level positive action checks are not HTTP portal coverage"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml",
+        "evidence/baseline-pytest.log"
+      ],
+      "variants": [
+        "HTTP TestClient"
+      ],
+      "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+    }
+  ],
+  "limitations": [
+    "No request-level coverage trace was captured by baseline pytest; mapping proves executed test bodies and their asserted calls.",
+    "Passing a listed variant does not establish all endpoint contracts. DELETE and portal table actions have rejection-only coverage in baseline.",
+    "Other specialists may add independent completed-load/browser evidence; it is not claimed here.",
+    "POST /api/restaurant/alerts/{identifier}/ack has no concrete invocation in this evidence set and remains untested; not emitted as passing coverage."
+  ],
+  "mapping_artifact": "evidence/verification/baseline-api-map.json"
+}

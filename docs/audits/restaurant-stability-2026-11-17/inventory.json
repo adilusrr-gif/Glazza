@@ -1,0 +1,367 @@
+{
+  "schema_version": "1.0",
+  "project": "Glazza",
+  "target_commit": "98a22174f44097d53c12e1febb870951ff914aba",
+  "scope": "Restaurant module stability and affected shared database/background jobs",
+  "surfaces": [
+    {
+      "id": "api:GET:/api/restaurant",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 649,
+      "label": "overview",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/staff",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 654,
+      "label": "create_staff",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:PUT:/api/restaurant/staff/{identifier}",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 659,
+      "label": "update_staff",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/staff/{identifier}/token",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 664,
+      "label": "rotate_staff_token",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/tables",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 669,
+      "label": "create_table",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:PUT:/api/restaurant/tables/{identifier}",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 674,
+      "label": "update_table",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:DELETE:/api/restaurant/tables/{identifier}",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 679,
+      "label": "remove_table",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/tables/{identifier}/actions",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 684,
+      "label": "act_on_table",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 689,
+      "label": "acknowledge_alert",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:GET:/api/restaurant/portal",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 694,
+      "label": "staff_portal",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 698,
+      "label": "staff_table_action",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "type": "api",
+      "file": "app/restaurant.py",
+      "line": 703,
+      "label": "staff_acknowledge",
+      "critical": true,
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "flow:restaurant:seating",
+      "type": "flow",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "Arrival debounce and a single persisted visit",
+      "critical": true,
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "flow:restaurant:deadline",
+      "type": "flow",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "First approach escalation at 120 seconds",
+      "critical": true,
+      "domains": [
+        "functional",
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "flow:restaurant:departure",
+      "type": "flow",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "Vacancy debounce and cleanup transition",
+      "critical": true,
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "flow:restaurant:hold",
+      "type": "flow",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "Temporary absence and resume",
+      "critical": true,
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "flow:restaurant:restart",
+      "type": "flow",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "Durable visits and tasks after process death",
+      "critical": true,
+      "domains": [
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "flow:restaurant:concurrency",
+      "type": "flow",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "Concurrent repeated actions and observations",
+      "critical": true,
+      "domains": [
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "job:restaurant:retention",
+      "type": "job",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "History retention preserves active work",
+      "critical": true,
+      "domains": [
+        "data",
+        "operational_cost"
+      ]
+    },
+    {
+      "id": "job:restaurant:tick",
+      "type": "job",
+      "file": "app/engine.py",
+      "line": 1,
+      "label": "Tick and timer isolation from external delivery",
+      "critical": true,
+      "domains": [
+        "performance",
+        "architecture"
+      ]
+    },
+    {
+      "id": "integration:restaurant:mqtt",
+      "type": "integration",
+      "file": "app/restaurant_feed.py",
+      "line": 1,
+      "label": "Broker disconnect and reconnect, current snapshots",
+      "critical": true,
+      "domains": [
+        "performance",
+        "functional"
+      ]
+    },
+    {
+      "id": "integration:restaurant:camera",
+      "type": "integration",
+      "file": "app/restaurant_feed.py",
+      "line": 1,
+      "label": "Stationary people, stale/malformed camera data",
+      "critical": true,
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "integration:restaurant:telegram",
+      "type": "integration",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "Notification retry, provider outage, recovery",
+      "critical": true,
+      "domains": [
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "performance:restaurant:http",
+      "type": "performance",
+      "file": "app/restaurant.py",
+      "line": 1,
+      "label": "HTTP polling and action load, latency and memory",
+      "critical": true,
+      "domains": [
+        "performance",
+        "operational_cost"
+      ]
+    },
+    {
+      "id": "ui:restaurant:admin",
+      "type": "ui",
+      "file": "app/static/restaurant.js",
+      "line": 1,
+      "label": "Administrative restaurant UI flow",
+      "critical": false,
+      "domains": [
+        "functional"
+      ]
+    },
+    {
+      "id": "ui:restaurant:staff",
+      "type": "ui",
+      "file": "app/static/staff.js",
+      "line": 1,
+      "label": "Staff UI state, stale responses and phone layout",
+      "critical": false,
+      "domains": [
+        "functional"
+      ]
+    },
+    {
+      "id": "architecture:restaurant:sqlite",
+      "type": "architecture",
+      "file": "app/store.py",
+      "line": 1,
+      "label": "SQLite writer and background worker isolation",
+      "critical": true,
+      "domains": [
+        "architecture",
+        "code_quality"
+      ]
+    },
+    {
+      "id": "business:restaurant:handoff",
+      "type": "business",
+      "file": "docs/RESTAURANT.md",
+      "line": 1,
+      "label": "Waiter and cleanup confirmation workflow",
+      "critical": false,
+      "domains": [
+        "business_efficiency"
+      ]
+    },
+    {
+      "id": "blocked:restaurant:physical-camera",
+      "type": "blocked",
+      "file": "docs/RESTAURANT.md",
+      "line": 1,
+      "label": "Real camera and restaurant acceptance",
+      "critical": true,
+      "domains": [
+        "functional"
+      ]
+    },
+    {
+      "id": "service:restaurant:staff-scope",
+      "type": "service",
+      "file": "app/restaurant.py",
+      "line": 451,
+      "label": "Service-level employee scope, token revocation, reassignment and fallback",
+      "critical": true,
+      "domains": [
+        "authorization"
+      ]
+    }
+  ],
+  "surface_count": 30,
+  "unrelated_modules": "Excluded from restaurant stability coverage; existing full test suite remains regression evidence",
+  "denominator_note": "29 initial source-derived surfaces +1 discovered staff-scope service boundary; domains remain explicit. Tested means at least one evidenced variant, not exhaustive contract coverage."
+}

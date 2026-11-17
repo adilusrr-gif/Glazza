@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "/workspace/scratch/160f893adec1/Glazza/tests/stability/restaurant_verify_transport.py", line 99, in <module>
+    result=asyncio.run(run());data=json.dumps(result,ensure_ascii=False,indent=2)+'\n'
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/workspace/scratch/160f893adec1/Glazza/tests/stability/restaurant_verify_transport.py", line 71, in run
+    await wait_until(lambda:not feed.client._thread.is_alive())
+  File "/workspace/scratch/160f893adec1/Glazza/tests/stability/restaurant_verify_transport.py", line 34, in wait_until
+    while not predicate():
+              ^^^^^^^^^^^
+  File "/workspace/scratch/160f893adec1/Glazza/tests/stability/restaurant_verify_transport.py", line 71, in <lambda>
+    await wait_until(lambda:not feed.client._thread.is_alive())
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'is_alive'

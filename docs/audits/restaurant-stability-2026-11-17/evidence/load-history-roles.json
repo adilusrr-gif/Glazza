@@ -1,0 +1,2512 @@
+{
+  "kind": "measured",
+  "target_commit": "98a22174f44097d53c12e1febb870951ff914aba",
+  "environment": "Isolated real Uvicorn process, loopback HTTP; seeded synthetic history; serial snapshots, no video processing",
+  "results": [
+    {
+      "resolved_history_rows": 0,
+      "role": "admin",
+      "latency": {
+        "count": 20,
+        "p50_ms": 55.131,
+        "p95_ms": 59.213,
+        "p99_ms": 59.308,
+        "max_ms": 59.332
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 0
+    },
+    {
+      "resolved_history_rows": 0,
+      "role": "manager_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 51.533,
+        "p95_ms": 55.676,
+        "p99_ms": 55.677,
+        "max_ms": 55.677
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 0
+    },
+    {
+      "resolved_history_rows": 0,
+      "role": "waiter_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 47.934,
+        "p95_ms": 51.982,
+        "p99_ms": 52.01,
+        "max_ms": 52.017
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 0
+    },
+    {
+      "resolved_history_rows": 0,
+      "role": "waiter_without_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 47.994,
+        "p95_ms": 52.042,
+        "p99_ms": 52.115,
+        "max_ms": 52.133
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 0
+    },
+    {
+      "resolved_history_rows": 1000,
+      "role": "admin",
+      "latency": {
+        "count": 20,
+        "p50_ms": 21.439,
+        "p95_ms": 30.996,
+        "p99_ms": 31.244,
+        "max_ms": 31.306
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 1000,
+      "role": "manager_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 17.367,
+        "p95_ms": 22.522,
+        "p99_ms": 23.553,
+        "max_ms": 23.81
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 10.047,
+        "p95_ms": 12.407,
+        "p99_ms": 13.905,
+        "max_ms": 14.28
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 47.93,
+        "p95_ms": 51.937,
+        "p99_ms": 52.02,
+        "max_ms": 52.041
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 3
+    },
+    {
+      "resolved_history_rows": 5000,
+      "role": "admin",
+      "latency": {
+        "count": 20,
+        "p50_ms": 19.457,
+        "p95_ms": 21.698,
+        "p99_ms": 23.049,
+        "max_ms": 23.387
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 5000,
+      "role": "manager_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 14.722,
+        "p95_ms": 19.847,
+        "p99_ms": 19.85,
+        "max_ms": 19.851
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 8.486,
+        "p95_ms": 9.581,
+        "p99_ms": 9.927,
+        "max_ms": 10.014
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 51.783,
+        "p95_ms": 52.509,
+        "p99_ms": 54.965,
+        "max_ms": 55.579
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 3
+    },
+    {
+      "resolved_history_rows": 10000,
+      "role": "admin",
+      "latency": {
+        "count": 20,
+        "p50_ms": 16.678,
+        "p95_ms": 21.907,
+        "p99_ms": 23.529,
+        "max_ms": 23.934
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 10000,
+      "role": "manager_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 20.469,
+        "p95_ms": 24.88,
+        "p99_ms": 25.33,
+        "max_ms": 25.442
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 60,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 10.49,
+        "p95_ms": 15.163,
+        "p99_ms": 16.072,
+        "max_ms": 16.299
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 200
+    },
+    {
+      "resolved_history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency": {
+        "count": 20,
+        "p50_ms": 51.967,
+        "p95_ms": 55.981,
+        "p99_ms": 56.343,
+        "max_ms": 56.434
+      },
+      "statuses": [
+        200
+      ],
+      "returned_tables": 3,
+      "returned_alerts": 3
+    }
+  ],
+  "raw_samples": [
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 11.327112999424571,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 8.705575999556459,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 59.33153099977062,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 58.453715000723605,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 51.364476999879116,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 51.816250999763724,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 50.8087769994745,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 59.206701998846256,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.32810300064739,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.65645800015773,
+      "status": 200,
+      "response_bytes": 50627
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 51.09520000041812,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 51.67884200091066,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.214153999259,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 51.25388399937947,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.15359499986516,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.10877799861191,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.19488600111799,
+      "status": 200,
+      "response_bytes": 50628
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 51.40189200028544,
+      "status": 200,
+      "response_bytes": 50748
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.47176599975501,
+      "status": 200,
+      "response_bytes": 50748
+    },
+    {
+      "history_rows": 0,
+      "role": "admin",
+      "latency_ms": 55.16674899990903,
+      "status": 200,
+      "response_bytes": 50748
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 10.578197001450462,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 52.38965699936671,
+      "status": 200,
+      "response_bytes": 48018
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 54.93551300060062,
+      "status": 200,
+      "response_bytes": 48018
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.188186998842866,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.16400200131466,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 55.31950099975802,
+      "status": 200,
+      "response_bytes": 48018
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 55.67558599977929,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 54.84951500147872,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.157101999706356,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 55.67730899929302,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 47.4898039992695,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.525234999644454,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.54087799928675,
+      "status": 200,
+      "response_bytes": 48018
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.051776001258986,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.25683900041622,
+      "status": 200,
+      "response_bytes": 48018
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 55.440689999159076,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 55.46332300036738,
+      "status": 200,
+      "response_bytes": 48019
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.39689499992528,
+      "status": 200,
+      "response_bytes": 47899
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 51.45185699984722,
+      "status": 200,
+      "response_bytes": 47898
+    },
+    {
+      "history_rows": 0,
+      "role": "manager_with_history",
+      "latency_ms": 55.34880300001532,
+      "status": 200,
+      "response_bytes": 47899
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.26653400030045,
+      "status": 200,
+      "response_bytes": 2825
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 51.872949001335655,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.83017099907738,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.90226799923403,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.8453889991215,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.99552000076801,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 51.97968600077729,
+      "status": 200,
+      "response_bytes": 2825
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.92971399911039,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.84723199918517,
+      "status": 200,
+      "response_bytes": 2825
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.76223600129015,
+      "status": 200,
+      "response_bytes": 2825
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 48.07058199912717,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 48.24147399995127,
+      "status": 200,
+      "response_bytes": 2825
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.6495850016363,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.937580000507296,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 51.94444399967324,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.64901900125551,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 48.15736999989895,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.769668000910315,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 52.01706200023182,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_with_history",
+      "latency_ms": 47.947089000444976,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.84787300013704,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.74402000111877,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 52.036981000128435,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 48.081357999762986,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.64609499943617,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.96112000076391,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.79291200065927,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 48.24629999893659,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 48.00768199856975,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 51.884002999941,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 51.698539000426535,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.93995199906931,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 52.13289100174734,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.73465399921406,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 48.06835700037482,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.68667300049856,
+      "status": 200,
+      "response_bytes": 2821
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.755125000549015,
+      "status": 200,
+      "response_bytes": 2820
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 48.13644800015027,
+      "status": 200,
+      "response_bytes": 2827
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 47.979466000469984,
+      "status": 200,
+      "response_bytes": 2826
+    },
+    {
+      "history_rows": 0,
+      "role": "waiter_without_history",
+      "latency_ms": 51.79513199982466,
+      "status": 200,
+      "response_bytes": 2827
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 22.221655999601353,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 17.59671400031948,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 21.226856999419397,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 25.458561998675577,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 18.45989400135295,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 16.37328699871432,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 23.673589999816613,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 19.134901000143145,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 20.364186999358935,
+      "status": 200,
+      "response_bytes": 157226
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 18.812328999047168,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 30.979924000348547,
+      "status": 200,
+      "response_bytes": 157226
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 22.346034998918185,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 20.32802299981995,
+      "status": 200,
+      "response_bytes": 157226
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 31.306246000895044,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 29.60548299961374,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 23.148104999563657,
+      "status": 200,
+      "response_bytes": 157226
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 22.755664998840075,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 17.85173100142856,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 21.650253000188968,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "admin",
+      "latency_ms": 14.493278998997994,
+      "status": 200,
+      "response_bytes": 157227
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 20.279467000364093,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 15.049020001242752,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 15.090631999555626,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 15.600674998495379,
+      "status": 200,
+      "response_bytes": 154497
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 20.695451999927172,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 19.872065000527073,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 21.390308000263758,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 21.13947699945129,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 15.659422000680934,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 22.45456099990406,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 17.943376000403077,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 15.176487999269739,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 15.769014000397874,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 17.6400990003458,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 14.651743998911115,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 16.49057000031462,
+      "status": 200,
+      "response_bytes": 154497
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 17.093430999011616,
+      "status": 200,
+      "response_bytes": 154497
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 15.684869000324397,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 23.81007199983287,
+      "status": 200,
+      "response_bytes": 154498
+    },
+    {
+      "history_rows": 1000,
+      "role": "manager_with_history",
+      "latency_ms": 18.948481001643813,
+      "status": 200,
+      "response_bytes": 157438
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.996546999900602,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.128544999839505,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.37701199836738,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 11.512570999911986,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.195712000495405,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.896137999021448,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.17189099911775,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.617652000088128,
+      "status": 200,
+      "response_bytes": 109742
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.467769999697339,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.400148000873742,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.862302000125055,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 12.10113599881879,
+      "status": 200,
+      "response_bytes": 109742
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 11.97525000134192,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.815451999907964,
+      "status": 200,
+      "response_bytes": 109741
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.788770999875851,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 12.308182000197121,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.78400999904261,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 14.279573999374406,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.098417000335758,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_with_history",
+      "latency_ms": 11.845052000353462,
+      "status": 200,
+      "response_bytes": 109743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 44.517390999317286,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.48887100140564,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.91537100027199,
+      "status": 200,
+      "response_bytes": 4742
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 48.081581999213086,
+      "status": 200,
+      "response_bytes": 4742
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.68926599981205,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 48.12600200057204,
+      "status": 200,
+      "response_bytes": 4742
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.826960999373114,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.69585699978052,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.87053299960098,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.83774699899368,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.94241099989449,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.86345399952552,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.040765000128886,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.91235599986976,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.92757800068648,
+      "status": 200,
+      "response_bytes": 4743
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.76920300073107,
+      "status": 200,
+      "response_bytes": 4742
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.814741999900434,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.931173000411945,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.819848999002716,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 1000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.91799499980698,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 21.608930999718723,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 20.3693999992538,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 17.91570399836928,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 19.672850001370534,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 17.50713199908205,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 17.40931700078363,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 19.895248999091564,
+      "status": 200,
+      "response_bytes": 160347
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 19.93133199903241,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 16.00858799974958,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 15.909191000901046,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 23.38694799982477,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 18.358344001171645,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 13.749955998719088,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 14.669590000266908,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 20.241430998794385,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 20.385763999001938,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 20.768651000253158,
+      "status": 200,
+      "response_bytes": 160347
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 18.716388000029838,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 20.39933900050528,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "admin",
+      "latency_ms": 19.241328000134672,
+      "status": 200,
+      "response_bytes": 160348
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 17.8400929999043,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 19.55703900057415,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 19.8471290004818,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 19.850995000524563,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 19.334452001203317,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 19.740110001293942,
+      "status": 200,
+      "response_bytes": 157618
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 14.788446000238764,
+      "status": 200,
+      "response_bytes": 157618
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 14.654557999165263,
+      "status": 200,
+      "response_bytes": 157618
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 11.643951000223751,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 13.138612999682664,
+      "status": 200,
+      "response_bytes": 157618
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 11.754188999475446,
+      "status": 200,
+      "response_bytes": 157618
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 11.78056199933053,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 14.649650000137626,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 17.31619000020146,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 17.54689599874837,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 17.14902300045651,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 13.581088000137242,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 11.95804499911901,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 12.803672998416005,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "manager_with_history",
+      "latency_ms": 12.193132000902551,
+      "status": 200,
+      "response_bytes": 157619
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.622016001027077,
+      "status": 200,
+      "response_bytes": 109523
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.55775900001754,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.01416200051608,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.754241998758516,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.352999000635464,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.86824000008346,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.672040999954334,
+      "status": 200,
+      "response_bytes": 109524
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.924738998757675,
+      "status": 200,
+      "response_bytes": 109524
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.777200999247725,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.559384999898612,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.130611000524368,
+      "status": 200,
+      "response_bytes": 109524
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.100296001430252,
+      "status": 200,
+      "response_bytes": 109524
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.133334999001818,
+      "status": 200,
+      "response_bytes": 109524
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.236767000198597,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.05544000104419,
+      "status": 200,
+      "response_bytes": 109524
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.172693000233267,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.46040500093659,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.319829999891226,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.155977999194874,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_with_history",
+      "latency_ms": 8.412135999606107,
+      "status": 200,
+      "response_bytes": 109525
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 44.8573830017267,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.80892400049197,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.85682399960933,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.34701799963659,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.4285170002986,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 48.06109099990863,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.17060699942522,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.448890000756364,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.76643999948283,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.93871399933414,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.05144999854383,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.799939001284656,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.90842999945744,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.87694300002477,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.73732699950051,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.00175800018769,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.11061800036987,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.61527699965518,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 48.09476800073753,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 5000,
+      "role": "waiter_without_history",
+      "latency_ms": 55.57892199976777,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 17.880063000120572,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 15.58578899857821,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 15.244700000039302,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 15.571804000501288,
+      "status": 200,
+      "response_bytes": 160406
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 15.487249000216252,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 15.335014000811498,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 23.93427700008033,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 20.508174999122275,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 20.439975000044797,
+      "status": 200,
+      "response_bytes": 160406
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 20.406374998856336,
+      "status": 200,
+      "response_bytes": 160406
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 20.75504000094952,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 21.79985800103168,
+      "status": 200,
+      "response_bytes": 160406
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 13.433523999992758,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 17.771091999748023,
+      "status": 200,
+      "response_bytes": 160406
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 15.184701000180212,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 14.911528000084218,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 14.309868998680031,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 15.163379999648896,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 19.26666200051841,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "admin",
+      "latency_ms": 18.916885001090122,
+      "status": 200,
+      "response_bytes": 160407
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 18.12961100040411,
+      "status": 200,
+      "response_bytes": 157677
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 19.895630999599234,
+      "status": 200,
+      "response_bytes": 157678
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 21.32129700112273,
+      "status": 200,
+      "response_bytes": 157678
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 18.658953998965444,
+      "status": 200,
+      "response_bytes": 157678
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 20.57694700124557,
+      "status": 200,
+      "response_bytes": 157678
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 22.29608699963137,
+      "status": 200,
+      "response_bytes": 157678
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 21.094801999424817,
+      "status": 200,
+      "response_bytes": 157677
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 24.849958999766386,
+      "status": 200,
+      "response_bytes": 157678
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 21.38527100032661,
+      "status": 200,
+      "response_bytes": 157678
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 25.442314999963855,
+      "status": 200,
+      "response_bytes": 157677
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 17.87344399963331,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 19.693281999934698,
+      "status": 200,
+      "response_bytes": 157557
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 19.415099999605445,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 17.080972000258043,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 20.627862999390345,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 19.455841000308283,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 20.360307000373723,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 22.311900000204332,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 21.35450100104208,
+      "status": 200,
+      "response_bytes": 157558
+    },
+    {
+      "history_rows": 10000,
+      "role": "manager_with_history",
+      "latency_ms": 18.5216110003239,
+      "status": 200,
+      "response_bytes": 157557
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.430383001221344,
+      "status": 200,
+      "response_bytes": 109577
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.734876999777043,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.254791999410372,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.810281999307335,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.246108000297681,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.277615999963018,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.490929000094184,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.766483999759657,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.329309001463116,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.201632999975118,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 9.846094999375055,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.322338999685599,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 10.549844000706798,
+      "status": 200,
+      "response_bytes": 109577
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 11.818578999736928,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 12.881289001597906,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 13.86785599970608,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 16.29869699900155,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 15.103522000572411,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 14.206526000634767,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_with_history",
+      "latency_ms": 13.086291000945494,
+      "status": 200,
+      "response_bytes": 109578
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.849867000986706,
+      "status": 200,
+      "response_bytes": 4749
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.565220001066336,
+      "status": 200,
+      "response_bytes": 4749
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.777938000668655,
+      "status": 200,
+      "response_bytes": 4748
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.01488800048537,
+      "status": 200,
+      "response_bytes": 4749
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.51172499972745,
+      "status": 200,
+      "response_bytes": 4749
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 56.43367000084254,
+      "status": 200,
+      "response_bytes": 4749
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.35557500034338,
+      "status": 200,
+      "response_bytes": 4748
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 55.92692200116289,
+      "status": 200,
+      "response_bytes": 4749
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 55.725268999594846,
+      "status": 200,
+      "response_bytes": 4748
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.726121999308816,
+      "status": 200,
+      "response_bytes": 4747
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.96987299960165,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.918866998676094,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.80596999889531,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 52.01839300025313,
+      "status": 200,
+      "response_bytes": 4753
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 55.78040000000328,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 55.957483000383945,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 51.77940000066883,
+      "status": 200,
+      "response_bytes": 4754
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 55.854760999864084,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 55.91373700008262,
+      "status": 200,
+      "response_bytes": 4755
+    },
+    {
+      "history_rows": 10000,
+      "role": "waiter_without_history",
+      "latency_ms": 47.869545000139624,
+      "status": 200,
+      "response_bytes": 4755
+    }
+  ],
+  "verdict": "PASS",
+  "requests": 320,
+  "limitations": [
+    "Latency samples describe this local host only.",
+    "Synthetic history is inserted directly; this measures snapshot read cost, not 10000 real-world table visits.",
+    "No notification delivery tested."
+  ]
+}

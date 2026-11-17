@@ -1,0 +1,216 @@
+{
+  "synthetic": true,
+  "target_commit": "98a22174f44097d53c12e1febb870951ff914aba",
+  "environment": "temporary SQLite DBs, real SIGKILL, synthetic observations and mocked HTTP delivery",
+  "external_messages_sent": 0,
+  "checks": {
+    "crash": {
+      "result": "PASS",
+      "real_sigkill_count": 28,
+      "integrity_checks": 28,
+      "events": [
+        {
+          "operation": "arrival_uncommitted",
+          "boundary": "uncommitted_arrival",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_uncommitted",
+          "boundary": "uncommitted_escalation",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_uncommitted",
+          "boundary": "uncommitted_arrival",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_uncommitted",
+          "boundary": "uncommitted_escalation",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_uncommitted",
+          "boundary": "uncommitted_arrival",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_uncommitted",
+          "boundary": "uncommitted_escalation",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_uncommitted",
+          "boundary": "uncommitted_arrival",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_uncommitted",
+          "boundary": "uncommitted_escalation",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_uncommitted",
+          "boundary": "uncommitted_arrival",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_uncommitted",
+          "boundary": "uncommitted_escalation",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_uncommitted",
+          "boundary": "uncommitted_arrival",
+          "exit_code": -9
+        },
+        {
+          "operation": "arrival_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_uncommitted",
+          "boundary": "uncommitted_escalation",
+          "exit_code": -9
+        },
+        {
+          "operation": "deadline_committed",
+          "boundary": "committed",
+          "exit_code": -9
+        },
+        {
+          "operation": "delivery",
+          "boundary": "delivery_started",
+          "exit_code": -9
+        },
+        {
+          "operation": "delivery",
+          "boundary": "delivery_started",
+          "exit_code": -9
+        },
+        {
+          "operation": "delivery",
+          "boundary": "delivery_started",
+          "exit_code": -9
+        },
+        {
+          "operation": "delivery",
+          "boundary": "delivery_started",
+          "exit_code": -9
+        }
+      ],
+      "delivery_recovery": [
+        {
+          "final_attempt": false,
+          "state_after_restart": "sent",
+          "delivery_attempts": 2,
+          "mocked_requests": 1
+        },
+        {
+          "final_attempt": false,
+          "state_after_restart": "sent",
+          "delivery_attempts": 2,
+          "mocked_requests": 1
+        },
+        {
+          "final_attempt": false,
+          "state_after_restart": "sent",
+          "delivery_attempts": 2,
+          "mocked_requests": 1
+        },
+        {
+          "final_attempt": true,
+          "state_after_restart": "failed",
+          "delivery_attempts": 8,
+          "mocked_requests": 0
+        }
+      ],
+      "elapsed_seconds": 8.712677473999065,
+      "clock": "virtual values for deterministic boundary placement; process death and transactions are real"
+    },
+    "concurrency": {
+      "result": "PASS",
+      "rounds": 25,
+      "concurrent_operations": 300,
+      "status_distribution": {
+        "tick": 25,
+        "409": 250,
+        "200": 25
+      },
+      "stale_cleanup_replays_rejected": 25,
+      "distinct_visits_created": 50,
+      "integrity_checks": 25
+    },
+    "scope": {
+      "result": "PASS",
+      "sites": 2,
+      "foreign_table_action": 403,
+      "foreign_alert_ack": 403,
+      "old_token_after_rotation": 401,
+      "already_authenticated_stale_token_action": 401,
+      "cross_site_assignment": 422,
+      "assigned_waiter_site_move": 409,
+      "disabled_waiter_token": 401,
+      "fallback_recipient": "same-site manager only"
+    }
+  },
+  "failures": [
+    {
+      "phase": "virtual",
+      "traceback": "Traceback (most recent call last):\n  File \"/workspace/scratch/160f893adec1/Glazza/tests/stability/restaurant_state.py\", line 381, in main\n    report['checks'][name]=callback(Path(directory))\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/scratch/160f893adec1/Glazza/tests/stability/restaurant_state.py\", line 325, in virtual_suite\n    assert not old_ended\n           ^^^^^^^^^^^^^\nAssertionError\n"
+    }
+  ],
+  "real_elapsed_seconds": 22.03110996900068,
+  "result": "FAIL"
+}

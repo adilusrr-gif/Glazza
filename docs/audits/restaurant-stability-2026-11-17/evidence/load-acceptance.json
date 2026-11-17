@@ -1,0 +1,28 @@
+{
+  "kind": "derived_from_measured_artifacts",
+  "checks": {
+    "soak_at_least_600_real_seconds": true,
+    "all_measured_http_responses_200": true,
+    "no_request_errors": true,
+    "no_wrong_waiter_tables_observed": true,
+    "integrity_check_ok": true,
+    "no_duplicate_logical_alerts": true,
+    "no_duplicate_active_visits": true,
+    "all_three_seatings_per_table": true,
+    "expected_arrivals_departures_escalation_recipients": true,
+    "background_loop_continues": true,
+    "all_60_intentionally_ungreeted_visits_escalated": true,
+    "stored_escalation_lateness_below_1s_in_soak": true,
+    "independent_connections_duration_120s": true
+  },
+  "measured_product_http_requests": 10398,
+  "unexpected_responses": 0,
+  "method": "Validate the finite fixture invariants and availability of all captured requests. No latency SLO or production capacity is asserted.",
+  "evidence_sha256": {
+    "load-results.json": "c2dce8a0bbc0e968fa194eb870458b05602ef9c07e1b925cd671923ed361a610",
+    "load-requests.csv": "17dfae5acfb8759666b97debff349dfe70d1f6a4d295d591e74d655a418413a1",
+    "load-soak-runtime.json": "3713700781ec82ecf652ba7045fe0f2e987b041489e33039ee4789bb967857a8",
+    "load-connections.json": "45b2a86b7612c8e2f94df27d0dd3db0b6244ec28c35559070c8f7881e469a36f",
+    "load-history-roles.json": "bf7ac60a22fe81574f2b8b9c0750729bea515616e38e99901a7d4606a832b395"
+  }
+}

@@ -1,0 +1,278 @@
+{
+  "schema_version": "1.0",
+  "nodes": [
+    {
+      "id": "api:GET:/api/restaurant",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/staff",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:PUT:/api/restaurant/staff/{identifier}",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/staff/{identifier}/token",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/tables",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:PUT:/api/restaurant/tables/{identifier}",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:DELETE:/api/restaurant/tables/{identifier}",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/tables/{identifier}/actions",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:GET:/api/restaurant/portal",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "file": "app/restaurant.py",
+      "domains": [
+        "api",
+        "authorization"
+      ]
+    },
+    {
+      "id": "flow:restaurant:seating",
+      "file": "app/restaurant.py",
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "flow:restaurant:deadline",
+      "file": "app/restaurant.py",
+      "domains": [
+        "functional",
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "flow:restaurant:departure",
+      "file": "app/restaurant.py",
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "flow:restaurant:hold",
+      "file": "app/restaurant.py",
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "flow:restaurant:restart",
+      "file": "app/restaurant.py",
+      "domains": [
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "flow:restaurant:concurrency",
+      "file": "app/restaurant.py",
+      "domains": [
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "job:restaurant:retention",
+      "file": "app/restaurant.py",
+      "domains": [
+        "data",
+        "operational_cost"
+      ]
+    },
+    {
+      "id": "job:restaurant:tick",
+      "file": "app/engine.py",
+      "domains": [
+        "performance",
+        "architecture"
+      ]
+    },
+    {
+      "id": "integration:restaurant:mqtt",
+      "file": "app/restaurant_feed.py",
+      "domains": [
+        "performance",
+        "functional"
+      ]
+    },
+    {
+      "id": "integration:restaurant:camera",
+      "file": "app/restaurant_feed.py",
+      "domains": [
+        "functional",
+        "data"
+      ]
+    },
+    {
+      "id": "integration:restaurant:telegram",
+      "file": "app/restaurant.py",
+      "domains": [
+        "data",
+        "performance"
+      ]
+    },
+    {
+      "id": "performance:restaurant:http",
+      "file": "app/restaurant.py",
+      "domains": [
+        "performance",
+        "operational_cost"
+      ]
+    },
+    {
+      "id": "ui:restaurant:admin",
+      "file": "app/static/restaurant.js",
+      "domains": [
+        "functional"
+      ]
+    },
+    {
+      "id": "ui:restaurant:staff",
+      "file": "app/static/staff.js",
+      "domains": [
+        "functional"
+      ]
+    },
+    {
+      "id": "architecture:restaurant:sqlite",
+      "file": "app/store.py",
+      "domains": [
+        "architecture",
+        "code_quality"
+      ]
+    },
+    {
+      "id": "business:restaurant:handoff",
+      "file": "docs/RESTAURANT.md",
+      "domains": [
+        "business_efficiency"
+      ]
+    },
+    {
+      "id": "blocked:restaurant:physical-camera",
+      "file": "docs/RESTAURANT.md",
+      "domains": [
+        "functional"
+      ]
+    },
+    {
+      "id": "service:restaurant:staff-scope",
+      "file": "app/restaurant.py",
+      "domains": [
+        "authorization"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "integration:restaurant:mqtt",
+      "to": "integration:restaurant:camera",
+      "type": "supplies_current_observations"
+    },
+    {
+      "from": "integration:restaurant:camera",
+      "to": "flow:restaurant:seating",
+      "type": "advances_durable_state"
+    },
+    {
+      "from": "job:restaurant:tick",
+      "to": "flow:restaurant:deadline",
+      "type": "evaluates_deadline"
+    },
+    {
+      "from": "flow:restaurant:deadline",
+      "to": "integration:restaurant:telegram",
+      "type": "queues_optional_external_delivery"
+    },
+    {
+      "from": "architecture:restaurant:sqlite",
+      "to": "job:restaurant:tick",
+      "type": "shared_writer_lock_boundary"
+    },
+    {
+      "from": "api:GET:/api/restaurant/portal",
+      "to": "ui:restaurant:staff",
+      "type": "polling_response"
+    },
+    {
+      "from": "business:restaurant:handoff",
+      "to": "flow:restaurant:departure",
+      "type": "manual_cleaning_confirmation_required"
+    }
+  ]
+}

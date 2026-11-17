@@ -1,0 +1,431 @@
+{
+  "schema_version": "1.0",
+  "agent": "data-integrity-engineer",
+  "scope": {
+    "project": ".",
+    "mode": "pr",
+    "surfaces": [
+      "flow:restaurant:seating",
+      "flow:restaurant:deadline",
+      "flow:restaurant:departure",
+      "flow:restaurant:hold",
+      "flow:restaurant:restart",
+      "flow:restaurant:concurrency",
+      "job:restaurant:retention",
+      "integration:restaurant:telegram",
+      "architecture:restaurant:sqlite",
+      "service:restaurant:staff-scope"
+    ],
+    "environment": "Disposable local SQLite databases and child processes; service methods invoked directly; no production or real messaging"
+  },
+  "summary": {
+    "discovered": 10,
+    "tested": 10,
+    "passed": 10,
+    "failed": 0,
+    "blocked": 0
+  },
+  "discovered_surfaces": [
+    {
+      "id": "service:restaurant:staff-scope",
+      "type": "service",
+      "file": "app/restaurant.py",
+      "line": 451,
+      "label": "Service-level employee scope, token revocation, reassignment and fallback",
+      "critical": true,
+      "domains": [
+        "authorization"
+      ]
+    }
+  ],
+  "findings": [],
+  "coverage": [
+    {
+      "surface_id": "flow:restaurant:seating",
+      "domain": "functional",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "3000 completed regular visits; arrival occurs at5s and not4.999s; restart and observation faults do not duplicate a visit"
+    },
+    {
+      "surface_id": "flow:restaurant:seating",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "3000 completed regular visits; arrival occurs at5s and not4.999s; restart and observation faults do not duplicate a visit"
+    },
+    {
+      "surface_id": "flow:restaurant:deadline",
+      "domain": "functional",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "1500 regular unconfirmed visits escalate at120s and not119.999s; acknowledged arrival still requires greeting; committed deadlines survive real process death"
+    },
+    {
+      "surface_id": "flow:restaurant:deadline",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "1500 regular unconfirmed visits escalate at120s and not119.999s; acknowledged arrival still requires greeting; committed deadlines survive real process death"
+    },
+    {
+      "surface_id": "flow:restaurant:departure",
+      "domain": "functional",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "3000 departures require60 seconds of fresh empty observations and a separate cleanup confirmation"
+    },
+    {
+      "surface_id": "flow:restaurant:departure",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "3000 departures require60 seconds of fresh empty observations and a separate cleanup confirmation"
+    },
+    {
+      "surface_id": "flow:restaurant:hold",
+      "domain": "functional",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "One held old visit survives72 virtual hours,100 injected unknown/older observations,20 service reinitializations and retention"
+    },
+    {
+      "surface_id": "flow:restaurant:hold",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "One held old visit survives72 virtual hours,100 injected unknown/older observations,20 service reinitializations and retention"
+    },
+    {
+      "surface_id": "flow:restaurant:restart",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "28 real SIGKILL boundaries: arrival/escalation before and after commit and durable sending states; all integrity checks ok"
+    },
+    {
+      "surface_id": "flow:restaurant:restart",
+      "domain": "performance",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "28 real SIGKILL boundaries: arrival/escalation before and after commit and durable sending states; all integrity checks ok"
+    },
+    {
+      "surface_id": "flow:restaurant:concurrency",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "25 rounds of12 parallel operations: exactly one greeting accepted,10 stale revisions rejected per round; concurrent deadline tick never leaves an open escalation after greeting"
+    },
+    {
+      "surface_id": "flow:restaurant:concurrency",
+      "domain": "performance",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "25 rounds of12 parallel operations: exactly one greeting accepted,10 stale revisions rejected per round; concurrent deadline tick never leaves an open escalation after greeting"
+    },
+    {
+      "surface_id": "job:restaurant:retention",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "One-day retention removes eligible history, keeps active old visits/open tasks, and correctly retains ended visits with newer notifications"
+    },
+    {
+      "surface_id": "integration:restaurant:telegram",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "Actual process death during mocked HTTP delivery;3 retries recover to sent and final8th-attempt uncertainty becomes failed, never falsely delivered"
+    },
+    {
+      "surface_id": "architecture:restaurant:sqlite",
+      "domain": "architecture",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "Actual transaction windows killed before/after commit; atomic rollback and durability checked with28 integrity_checks"
+    },
+    {
+      "surface_id": "service:restaurant:staff-scope",
+      "domain": "authorization",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/state-run.log"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager",
+        "cleaner"
+      ],
+      "variants": [
+        "disposable SQLite",
+        "synthetic observations"
+      ],
+      "notes": "Two-site service-level isolation, token rotation including stale authenticated principal, disabled token, cross-site assignment rejection and same-site manager fallback"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "real_sigkill_boundaries",
+      "kind": "measured",
+      "value": 28,
+      "unit": "process terminations",
+      "method": "Spawn isolated service process; wait for transaction/network boundary; SIGKILL; reopen SQLite and assert invariants",
+      "source": "evidence/state-results.json"
+    },
+    {
+      "name": "virtual_workload_duration",
+      "kind": "measured",
+      "value": 72,
+      "unit": "simulated hours",
+      "method": "500 rounds with explicit now arguments to service methods; not wall-clock endurance",
+      "source": "evidence/state-results.json"
+    },
+    {
+      "name": "completed_virtual_visits",
+      "kind": "measured",
+      "value": 3000,
+      "unit": "visits",
+      "method": "6 tables x500 rounds through actual service/SQLite lifecycle",
+      "source": "evidence/state-results.json"
+    },
+    {
+      "name": "concurrent_operations",
+      "kind": "measured",
+      "value": 300,
+      "unit": "operations",
+      "method": "25 rounds x12 threads synchronized by barrier",
+      "source": "evidence/state-results.json"
+    },
+    {
+      "name": "final_run_wall_time",
+      "kind": "measured",
+      "value": 22.74229972499961,
+      "unit": "seconds",
+      "method": "time.monotonic() around four suites",
+      "source": "evidence/state-results.json"
+    }
+  ],
+  "limitations": [
+    "72hours are accelerated logical time. This is not72hours of continuous real-time execution or a hardware capacity benchmark.",
+    "SIGKILL covers process death and actual SQLite WAL/transaction recovery, not host power loss, disk corruption, disk-full or network filesystem behavior.",
+    "Tests call RestaurantService directly, not through Uvicorn/HTTP. HTTP authentication/transport and full Engine startup are covered elsewhere or remain outside this specialist evidence.",
+    "Telegram request transport is httpx.MockTransport; real Telegram delivery and exactly-once provider delivery are not established.",
+    "No physical cameras, detector accuracy or production database were used."
+  ],
+  "methodological_notes": [
+    {
+      "initial_artifacts": [
+        "evidence/state-initial-harness.log",
+        "evidence/state-initial-harness.json"
+      ],
+      "initial_assertion": "All visits ended before retention cutoff must be deleted.",
+      "correction": "A newer cleanup notification legitimately keeps its older ended visit. Test now checks only unreferenced ended visits whose notifications are also eligible for deletion.",
+      "product_defect": false,
+      "final_result": "PASS",
+      "product_source": "app/restaurant.py:626-636"
+    }
+  ],
+  "reproduction_command": "PYTHONPATH=. .venv/bin/python tests/stability/restaurant_state.py",
+  "artifact_sha256": {
+    "evidence/state-results.json": "ac10c8a605f9daf991b62ea4beea8a531c5b8d16d51741bc783aefe0ddbc520b",
+    "evidence/state-run.log": "40c45eeed9a62bb2532dad48879ef46a8074ed406abf6fe5a65b1d0b88259d1c"
+  }
+}

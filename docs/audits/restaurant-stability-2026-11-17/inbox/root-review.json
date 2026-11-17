@@ -1,0 +1,346 @@
+{
+  "schema_version": "1.0",
+  "agent": "root-stability-review",
+  "scope": {
+    "project": ".",
+    "mode": "pr",
+    "environment": "local-disposable",
+    "surfaces": [
+      "api:GET:/api/restaurant/portal",
+      "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "api:DELETE:/api/restaurant/tables/{identifier}",
+      "ui:restaurant:staff",
+      "ui:restaurant:admin",
+      "job:restaurant:tick",
+      "job:restaurant:tick",
+      "architecture:restaurant:sqlite",
+      "architecture:restaurant:sqlite",
+      "business:restaurant:handoff",
+      "blocked:restaurant:physical-camera",
+      "api:GET:/api/restaurant",
+      "api:POST:/api/restaurant/tables",
+      "api:GET:/api/restaurant/portal",
+      "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "api:POST:/api/restaurant/portal/alerts/{identifier}/ack"
+    ]
+  },
+  "summary": {},
+  "discovered_surfaces": [],
+  "findings": [
+    {
+      "client_id": "ROOT-ALERT-001",
+      "root_cause_key": "restaurant.snapshot.completed-history-hides-open-alerts",
+      "title": "Закрытая история вытесняет незакрытые уведомления из рабочего списка",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant.py",
+        "line": 565,
+        "end_line": 569,
+        "related": [
+          "app/static/staff.js:58",
+          "app/static/restaurant.js:41"
+        ]
+      },
+      "surface_ids": [
+        "api:GET:/api/restaurant/portal"
+      ],
+      "impact": "Менеджер перестаёт видеть незакрытую задачу в списке уведомлений после200 более новых завершённых задач. Просроченная карточка стола остаётся видимой; запись вБД не теряется.",
+      "cause": "Общий LIMIT200 применяется к истории до выбора активных задач; клиент затем отбрасывает закрытые записи.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/alert-visibility.json",
+          "command": ".venv/bin/python tests/stability/restaurant_alert_visibility.py",
+          "observed": "Из201 созданного визита осталась1открытая задача вБД; portal вернул200закрытых задач и0открытых.",
+          "expected": "Открытые задачи доступны независимо от количества более новой закрытой истории.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        ".venv/bin/python tests/stability/restaurant_alert_visibility.py"
+      ],
+      "recommendation": "В RestaurantService.snapshot отдельно выбирать незакрытые адресные задачи; историю ограничивать и листать независимо. Если самих открытых задач больше лимита, добавить явное продолжение/счётчик, сохранив site/recipient фильтры.",
+      "regression_test": "Одна старая открытая задача остаётся видимой при199,200,203новых закрытых; у другого сотрудника/объекта она недоступна.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Одна старая открытая задача остаётся видимой при199,200,203новых закрытых; у другого сотрудника/объекта она недоступна.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Разделить запросы активных задач и истории.",
+          "Сохранить ограничение ответа через отдельную пагинацию истории и открытых задач.",
+          "Проверить границу200 и область доступа."
+        ]
+      }
+    },
+    {
+      "client_id": "ROOT-UI-001",
+      "root_cause_key": "restaurant.ui.unbounded-request-blocks-polling",
+      "title": "Незавершающийся запрос блокирует обновление экрана сотрудника",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/static/staff.js",
+        "line": 26,
+        "end_line": 35,
+        "related": [
+          "app/static/staff.js:75",
+          "app/static/staff.js:96",
+          "app/static/app.js:13"
+        ]
+      },
+      "surface_ids": [
+        "ui:restaurant:staff"
+      ],
+      "impact": "При зависании GET, тела ответа или POST дальнейший опрос и ручное обновление не начинаются. Интерфейс помечает данные устаревшими, серверные таймеры продолжают работу.",
+      "cause": "У запроса нет ограниченного срока выполнения/отмены; requestBusy/actionBusy освобождаются только после завершения Promise.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/ui-faults.json",
+          "command": "node tests/stability/restaurant_ui_faults.js",
+          "observed": "В VM-сценарии300виртуальных секунд не было новых запросов даже после ручногоrefresh; послеsettle запросы возобновились. Независимо проверено зависание response.json.",
+          "expected": "Зависший запрос завершается по ограниченному таймауту, после чего возможны новый опрос и восстановление.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "node tests/stability/restaurant_ui_faults.js"
+      ],
+      "recommendation": "Ввести AbortController с таймаутом, охватывающим fetch и чтение тела; освобождать блокировки в finally. После таймаута записи сначала перечитать серверное состояние, сохраняя visit_id/revision, а не вслепую повторять действие.",
+      "regression_test": "Незавершённые headers/body и POST не блокируют опрос дольше заданного таймаута; поздний ответ не перезаписывает новое состояние; повтор не влияет на новый визит.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Незавершённые headers/body и POST не блокируют опрос дольше заданного таймаута; поздний ответ не перезаписывает новое состояние; повтор не влияет на новый визит.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Ограничить полную длительность запроса и корректно отменять его.",
+          "После неясного результата POST перечитывать фактический визит.",
+          "Добавить тесты зависшихheaders/body/POST и позднихответов."
+        ]
+      }
+    },
+    {
+      "client_id": "ROOT-LOOP-001",
+      "root_cause_key": "restaurant.sqlite.sync-lock-waits-block-event-loop",
+      "title": "Ожидание SQLite writer-блокировки останавливает общий event loop",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/engine.py",
+        "line": 44,
+        "end_line": 50,
+        "related": [
+          "app/restaurant.py:433",
+          "app/store.py:56"
+        ]
+      },
+      "surface_ids": [
+        "job:restaurant:tick",
+        "architecture:restaurant:sqlite"
+      ],
+      "impact": "При искусственно задержанной записи приостанавливается общий async event loop. Измерялась задержка heartbeat, а не productionHTTP; целостностьБД сохраняется.",
+      "cause": "Синхронные pump/tick с BEGIN IMMEDIATE исполняются непосредственно внутри async-worker; sqlite3 ждёт освобождения writer-lock в этом же потоке.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/loop-stall.json",
+          "command": ".venv/bin/python tests/stability/restaurant_loop_stall.py",
+          "observed": "Приwriter-lock3.000с heartbeat имел промежуток2.345с вместо20мс; до воздействия максимум0.020229с.",
+          "expected": "ОжиданиеDBlock не приостанавливает несвязанные asyncзадачи.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        ".venv/bin/python tests/stability/restaurant_loop_stall.py"
+      ],
+      "recommendation": "Вынести синхронный цикл restaurant pump/tick в ограниченный последовательный исполнитель вне event loop, сохранив порядок наблюдение→tick и транзакции. Повторы busy/locked выполнять вне основного цикла; проверить и DBчастьdelivery.",
+      "regression_test": "При3с чужойwriter-транзакции независимыйheartbeat продолжает работать; предлагаемый тестовый предел200мс. После освобождения задачи и дедлайны восстанавливаются бездубликатов.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "При3с чужойwriter-транзакции независимыйheartbeat продолжает работать; предлагаемый тестовый предел200мс. После освобождения задачи и дедлайны восстанавливаются бездубликатов.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Изолировать блокирующую работуSQLite от event loop, не ослабляя транзакции.",
+          "Сохранить последовательность обработки одного ресторанного цикла.",
+          "Повторить faulttest и нормальныйHTTPsoak."
+        ]
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "surface_id": "api:GET:/api/restaurant/portal",
+      "domain": "api",
+      "status": "failed",
+      "evidence_refs": [
+        "evidence/alert-visibility.json"
+      ],
+      "notes": "200 newer completed tasks hide one older unresolved manager task; card remains overdue."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/alert-visibility.json"
+      ],
+      "notes": "Authenticated admin acknowledgment and repeated acknowledgment both200; positive branch only."
+    },
+    {
+      "surface_id": "api:DELETE:/api/restaurant/tables/{identifier}",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/alert-visibility.json"
+      ],
+      "notes": "Additional successful deletion of a ready empty table returns200."
+    },
+    {
+      "surface_id": "ui:restaurant:staff",
+      "domain": "functional",
+      "status": "failed",
+      "evidence_refs": [
+        "evidence/ui-faults.json",
+        "evidence/verification/state-review-ui.json"
+      ],
+      "notes": "Synthetic VM fault injection verifies polling and mutation recovery logic; not real-browser layout/network timing."
+    },
+    {
+      "surface_id": "ui:restaurant:admin",
+      "domain": "functional",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/historical-ci.json"
+      ],
+      "notes": "Historical Chromium run from2026-11-14 on identical unmodified production commit passed; no new browser soak is claimed."
+    },
+    {
+      "surface_id": "job:restaurant:tick",
+      "domain": "performance",
+      "status": "failed",
+      "evidence_refs": [
+        "evidence/loop-stall.json"
+      ],
+      "notes": "Deliberate SQLite writer contention stalls shared event-loop heartbeat; normal throughput measured separately."
+    },
+    {
+      "surface_id": "job:restaurant:tick",
+      "domain": "architecture",
+      "status": "failed",
+      "evidence_refs": [
+        "evidence/loop-stall.json"
+      ],
+      "notes": "Synchronous SQLite lock acquisition runs inside async worker."
+    },
+    {
+      "surface_id": "architecture:restaurant:sqlite",
+      "domain": "architecture",
+      "status": "failed",
+      "evidence_refs": [
+        "evidence/loop-stall.json",
+        "evidence/verification/loop-stall-source-review.json"
+      ],
+      "notes": "Atomicity passes independently, but writer-wait failure isolation fails; retain both observations."
+    },
+    {
+      "surface_id": "architecture:restaurant:sqlite",
+      "domain": "code_quality",
+      "status": "failed",
+      "evidence_refs": [
+        "evidence/loop-stall.json"
+      ],
+      "notes": "Blocking call in async worker is independently source-reviewed; no general maintainability score."
+    },
+    {
+      "surface_id": "business:restaurant:handoff",
+      "domain": "business_efficiency",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/state-results.json",
+        "evidence/baseline-pytest.log"
+      ],
+      "notes": "Verified implemented workflow: explicit greeting and cleaning confirmations; ack is distinct; no human-time saving or automatic waiter-recognition claim."
+    },
+    {
+      "surface_id": "blocked:restaurant:physical-camera",
+      "domain": "functional",
+      "status": "blocked",
+      "evidence_refs": [],
+      "notes": "No physical restaurant stream, target server, or labeled video supplied; camera/detection accuracy and production acceptance unavailable."
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant",
+      "domain": "authorization",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml"
+      ],
+      "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables",
+      "domain": "authorization",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml"
+      ],
+      "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant/portal",
+      "domain": "authorization",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml"
+      ],
+      "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "domain": "authorization",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml"
+      ],
+      "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "domain": "authorization",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/verification/baseline-api-map.json",
+        "evidence/baseline-junit.xml"
+      ],
+      "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+    }
+  ],
+  "limitations": [
+    "UI recovery faults were executed in NodeVM, with synthetic DOM and clock; no new real-browser stability run. Historical CI is timestamped separately.",
+    "Writer-lock scenario is injected against a temporary database; it is not measured normal production request latency.",
+    "No product code modified. Tests and report artifacts only."
+  ]
+}

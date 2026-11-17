@@ -1,0 +1,14 @@
+{
+  "phase": "soak",
+  "elapsed_s": 590.004,
+  "requests": 7720,
+  "errors": 0,
+  "resource": {
+    "elapsed_s": 590.004,
+    "rss_bytes": 77254656,
+    "fds": 13,
+    "threads": 3,
+    "cpu_s": 44.21,
+    "db_bytes": 700416
+  }
+}

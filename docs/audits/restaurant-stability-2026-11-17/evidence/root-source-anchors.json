@@ -1,0 +1,26 @@
+[
+  {
+    "finding_id": "ROOT-ALERT-001",
+    "file": "app/restaurant.py",
+    "line": 565,
+    "end_line": 569,
+    "source_sha256": "3d53b0aa1115335ef55fcdac3567371065edca92ebd1ddb7931c291cb6ec4982",
+    "exact_source": "            clause, params = (' WHERE site_id=?', [site_id]) if site_id else ('', [])\n            if staff:\n                clause += ' AND recipient_id=?'\n                params.append(staff['id'])\n            alerts = [dict(a) for a in db.execute('SELECT * FROM restaurant_alerts' + clause + ' ORDER BY at DESC,id DESC LIMIT 200', params)]"
+  },
+  {
+    "finding_id": "ROOT-UI-001",
+    "file": "app/static/staff.js",
+    "line": 26,
+    "end_line": 35,
+    "source_sha256": "d0f44b6dd28a1fe77a9f6cee2e0875bb971f23b32d6cb130ec64e61d145a194d",
+    "exact_source": "  async function request(path='',options={}) {\n    const response=await fetch('/api/restaurant/portal'+path,{...options,credentials:'omit',cache:'no-store',headers:{Authorization:'Bearer '+token,...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers || {})}});\n    let result;\n    try { result=await response.json(); } catch (_) { throw new Error('Сервер временно недоступен. Повторите позже.'); }\n    if(response.status===401 || response.status===403) {\n      if (!path && response.status===401) { clearToken();stopped=true;data=null;showAccess('Персональная ссылка недействительна или доступ отключён. Попросите администратора выдать новую ссылку.'); }\n      throw new Error(typeof result.detail==='string'?result.detail:'Это действие недоступно вашему рабочему экрану.');\n    }\n    if(!response.ok)throw new Error(Array.isArray(result.detail)?result.detail.map(error=>error.msg).join('. '):result.detail || 'Действие не выполнено.');\n    return result;"
+  },
+  {
+    "finding_id": "ROOT-LOOP-001",
+    "file": "app/engine.py",
+    "line": 44,
+    "end_line": 50,
+    "source_sha256": "b7ccece9a663e93b740af872209058d107cd930864bff93ee1c14c1037e28424",
+    "exact_source": "    async def restaurant_work(self):\n        while True:\n            if not self.settings.demo:\n                now = time.time()\n                self.restaurant_feed.pump(self.restaurant, self.camera_signal, now=now)\n                self.restaurant.tick(now=now)\n            await asyncio.sleep(1)"
+  }
+]

@@ -1,0 +1,23 @@
+/workspace/scratch/160f893adec1/Glazza/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+{
+  "environment": "Temporary SQLite + real FastAPI portal; synthetic service observations and virtual time",
+  "generated_visits": 201,
+  "closed_newer_manager_tasks": 200,
+  "http_status": 200,
+  "observed": {
+    "unresolved_manager_tasks_in_database": 1,
+    "returned_tasks": 200,
+    "visible_unresolved_manager_tasks": 0,
+    "old_task_present_in_response": false,
+    "old_table_overdue_still_visible": true,
+    "database_integrity": "ok"
+  },
+  "expected": "Open tasks remain visible regardless of newer completed history; history limits must not hide active obligations.",
+  "source": "app/restaurant.py:569",
+  "additional_api_checks": {
+    "admin_ack_status": 200,
+    "repeated_admin_ack_status": 200,
+    "delete_ready_table_status": 200
+  }
+}

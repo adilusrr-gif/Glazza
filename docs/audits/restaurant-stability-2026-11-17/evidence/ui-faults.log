@@ -1,0 +1,41 @@
+{
+  "target": "app/static/staff.js at tested commit",
+  "environment": "Node VM with synthetic DOM, fetch, and accelerated clock; no browser/network claims",
+  "cases": [
+    {
+      "id": "pending-poll",
+      "simulated_seconds": 302,
+      "observed": {
+        "requests_before_release": 2,
+        "manual_refresh_started_request": false,
+        "offline_visible": true,
+        "actions_disabled": true,
+        "abort_signal": false,
+        "requests_after_release": 3
+      },
+      "expected": "A bounded request timeout releases the polling guard and permits a fresh request without waiting indefinitely for an old response.",
+      "finding": true
+    },
+    {
+      "id": "pending-action",
+      "simulated_seconds": 300,
+      "observed": {
+        "requests_before_release": 2,
+        "manual_refresh_started_request": false,
+        "abort_signal": false,
+        "requests_after_release": 3
+      },
+      "expected": "A timed-out mutation should release the UI, refresh actual server state, and permit safe recovery.",
+      "finding": true
+    },
+    {
+      "id": "rejected-request-recovers",
+      "observed": {
+        "requests": 3,
+        "offline_visible": false
+      },
+      "expected": "An explicitly rejected fetch is retried on the next poll.",
+      "finding": false
+    }
+  ]
+}

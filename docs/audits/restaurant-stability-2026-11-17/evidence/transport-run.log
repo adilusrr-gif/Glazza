@@ -1,0 +1,3 @@
+{"mqtt_checks": 12, "failed": ["deep_json_thread_survival"]}
+{"delivery_checks": 5, "failed": ["provider_retry_after_respected", "healthy_manager_queue_delay"]}
+{"checks": 17, "passed": 14, "failed": 3}

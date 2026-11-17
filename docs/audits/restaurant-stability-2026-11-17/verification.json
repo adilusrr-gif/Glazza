@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "verifier": "Independent specialists and root; original observations preserved",
+  "verifications": [
+    {
+      "finding_id": "ROOT-ALERT-001",
+      "state": "verified",
+      "method": "reproduced",
+      "evidence": [
+        "evidence/verification/state-review-alerts.json"
+      ],
+      "notes": "Independent fresh SQLite fixture and HTTP portal, 203 closed visits. Exact cap transition verified at199/200 records. Database live task survives; overdue table card remains visible; task list loses open alert."
+    },
+    {
+      "finding_id": "ROOT-UI-001",
+      "state": "verified",
+      "method": "reproduced",
+      "evidence": [
+        "evidence/verification/state-review-ui.json"
+      ],
+      "notes": "Independent Node VM with functioning fake intervals and timeouts. New variant hangs response.json after fetch resolves; separate POST hang. Neither scheduled polling nor manual refresh creates a new request over180 simulated seconds; rejection restores. This verifies async recovery logic, not browser rendering/network timing."
+    },
+    {
+      "finding_id": "REST-MQTT-001",
+      "state": "verified",
+      "method": "reproduced",
+      "evidence": [
+        "evidence/verification/root-mqtt.json"
+      ],
+      "notes": "Separate broker/topic and60001-byte depth30000 payload; dead Paho thread, connected flag true, valid next snapshot ignored. Final TTL check uses+16virtual seconds."
+    },
+    {
+      "finding_id": "ROOT-LOOP-001",
+      "state": "not_attempted",
+      "notes": "Reproducible primary runtime evidence exists; no additional independent runtime replay."
+    },
+    {
+      "finding_id": "REST-TG-002",
+      "state": "not_attempted",
+      "notes": "Reproducible primary runtime evidence exists; no additional independent runtime replay."
+    },
+    {
+      "finding_id": "REST-TG-003",
+      "state": "not_attempted",
+      "notes": "Reproducible primary runtime evidence exists; no additional independent runtime replay."
+    }
+  ],
+  "pass_samples": [
+    {
+      "surface_id": "flow:restaurant:deadline",
+      "state": "verified",
+      "evidence": [
+        "evidence/verification/state-review-passes.json"
+      ],
+      "notes": "Fresh fixture with different timestamps: no escalation at119.5s, exactly one at120s, repeat ticks preserve one logical task."
+    },
+    {
+      "surface_id": "flow:restaurant:restart",
+      "state": "verified",
+      "evidence": [
+        "evidence/verification/state-review-passes.json"
+      ],
+      "notes": "Two additional real SIGKILL events after arrival and escalation commits; visit identity and120s deadline persist; SQLite integrity_check ok."
+    }
+  ],
+  "limitations": [
+    "UI verification is a synthetic Node VM fault injection, not an independent real-browser/physical-network test.",
+    "Process kill is not power-loss/disk-corruption testing."
+  ],
+  "artifact_sha256": {
+    "evidence/verification/state-review-alerts.json": "15c7fe550fe42432e0549948d0d535c2013545513d14019d64867c5560d56724",
+    "evidence/verification/state-review-ui.json": "6f9eb788ed5393a2eaf263df44193d02cf3f6835f64b32559cf8913bbf1991c1",
+    "evidence/verification/state-review-passes.json": "8e57871c10acdbdba06c8044a7f11b6332a831f09615e0c42ef04911da8ace1d"
+  }
+}

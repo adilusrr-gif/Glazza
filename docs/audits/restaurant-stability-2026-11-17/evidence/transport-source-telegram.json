@@ -1,0 +1,8 @@
+{
+  "source_url": "https://core.telegram.org/bots/api#responseparameters",
+  "accessed_at": "2026-11-17T06:22:44.747595+00:00",
+  "source_type": "official Telegram Bot API documentation",
+  "field": "ResponseParameters.retry_after",
+  "documented_semantics": "When flood control is exceeded, this field specifies how many seconds must pass before the request can be repeated.",
+  "retrieval": "Web open plus find retry_after; source refs turn16view0 and turn17view0"
+}

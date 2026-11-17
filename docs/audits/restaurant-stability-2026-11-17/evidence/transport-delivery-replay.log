@@ -1,0 +1,2 @@
+{"delivery_checks": 5, "failed": ["provider_retry_after_respected", "healthy_manager_queue_delay"]}
+{"checks": 5, "passed": 3, "failed": 2}

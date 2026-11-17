@@ -1,0 +1,38 @@
+{
+  "finding_id": "ROOT-ALERT-001",
+  "state": "verified",
+  "independent_method": "Fresh temporary DB;203 real service-generated closed manager escalations; HTTP portal checked at199,200,203 closed records",
+  "source": "app/restaurant.py:569",
+  "checkpoints": [
+    {
+      "newer_closed_escalations": 199,
+      "http_status": 200,
+      "database_live_tasks": 1,
+      "response_tasks": 200,
+      "response_live_tasks": 1,
+      "old_alert_visible": true,
+      "old_table_overdue": true
+    },
+    {
+      "newer_closed_escalations": 200,
+      "http_status": 200,
+      "database_live_tasks": 1,
+      "response_tasks": 200,
+      "response_live_tasks": 0,
+      "old_alert_visible": false,
+      "old_table_overdue": true
+    },
+    {
+      "newer_closed_escalations": 203,
+      "http_status": 200,
+      "database_live_tasks": 1,
+      "response_tasks": 200,
+      "response_live_tasks": 0,
+      "old_alert_visible": false,
+      "old_table_overdue": true
+    }
+  ],
+  "expected": "A live task remains visible at every checkpoint, independent of completed history count.",
+  "boundary": "At199 newer closed alerts, the old live task is visible; at200 it disappears. The overdue table card remains visible.",
+  "external_messages_sent": 0
+}

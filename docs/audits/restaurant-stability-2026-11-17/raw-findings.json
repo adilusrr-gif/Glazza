@@ -1,0 +1,398 @@
+{
+  "schema_version": "1.0",
+  "findings": [
+    {
+      "client_id": "ROOT-ALERT-001",
+      "root_cause_key": "restaurant.snapshot.completed-history-hides-open-alerts",
+      "title": "Закрытая история вытесняет незакрытые уведомления из рабочего списка",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant.py",
+        "line": 565,
+        "end_line": 569,
+        "related": [
+          "app/static/staff.js:58",
+          "app/static/restaurant.js:41"
+        ]
+      },
+      "surface_ids": [
+        "api:GET:/api/restaurant/portal"
+      ],
+      "impact": "Менеджер перестаёт видеть незакрытую задачу в списке уведомлений после200 более новых завершённых задач. Просроченная карточка стола остаётся видимой; запись вБД не теряется.",
+      "cause": "Общий LIMIT200 применяется к истории до выбора активных задач; клиент затем отбрасывает закрытые записи.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/alert-visibility.json",
+          "command": ".venv/bin/python tests/stability/restaurant_alert_visibility.py",
+          "observed": "Из201 созданного визита осталась1открытая задача вБД; portal вернул200закрытых задач и0открытых.",
+          "expected": "Открытые задачи доступны независимо от количества более новой закрытой истории.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        ".venv/bin/python tests/stability/restaurant_alert_visibility.py"
+      ],
+      "recommendation": "В RestaurantService.snapshot отдельно выбирать незакрытые адресные задачи; историю ограничивать и листать независимо. Если самих открытых задач больше лимита, добавить явное продолжение/счётчик, сохранив site/recipient фильтры.",
+      "regression_test": "Одна старая открытая задача остаётся видимой при199,200,203новых закрытых; у другого сотрудника/объекта она недоступна.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Одна старая открытая задача остаётся видимой при199,200,203новых закрытых; у другого сотрудника/объекта она недоступна.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Разделить запросы активных задач и истории.",
+          "Сохранить ограничение ответа через отдельную пагинацию истории и открытых задач.",
+          "Проверить границу200 и область доступа."
+        ]
+      },
+      "source_agent": "root-stability-review"
+    },
+    {
+      "client_id": "ROOT-UI-001",
+      "root_cause_key": "restaurant.ui.unbounded-request-blocks-polling",
+      "title": "Незавершающийся запрос блокирует обновление экрана сотрудника",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/static/staff.js",
+        "line": 26,
+        "end_line": 35,
+        "related": [
+          "app/static/staff.js:75",
+          "app/static/staff.js:96",
+          "app/static/app.js:13"
+        ]
+      },
+      "surface_ids": [
+        "ui:restaurant:staff"
+      ],
+      "impact": "При зависании GET, тела ответа или POST дальнейший опрос и ручное обновление не начинаются. Интерфейс помечает данные устаревшими, серверные таймеры продолжают работу.",
+      "cause": "У запроса нет ограниченного срока выполнения/отмены; requestBusy/actionBusy освобождаются только после завершения Promise.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/ui-faults.json",
+          "command": "node tests/stability/restaurant_ui_faults.js",
+          "observed": "В VM-сценарии300виртуальных секунд не было новых запросов даже после ручногоrefresh; послеsettle запросы возобновились. Независимо проверено зависание response.json.",
+          "expected": "Зависший запрос завершается по ограниченному таймауту, после чего возможны новый опрос и восстановление.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "node tests/stability/restaurant_ui_faults.js"
+      ],
+      "recommendation": "Ввести AbortController с таймаутом, охватывающим fetch и чтение тела; освобождать блокировки в finally. После таймаута записи сначала перечитать серверное состояние, сохраняя visit_id/revision, а не вслепую повторять действие.",
+      "regression_test": "Незавершённые headers/body и POST не блокируют опрос дольше заданного таймаута; поздний ответ не перезаписывает новое состояние; повтор не влияет на новый визит.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Незавершённые headers/body и POST не блокируют опрос дольше заданного таймаута; поздний ответ не перезаписывает новое состояние; повтор не влияет на новый визит.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Ограничить полную длительность запроса и корректно отменять его.",
+          "После неясного результата POST перечитывать фактический визит.",
+          "Добавить тесты зависшихheaders/body/POST и позднихответов."
+        ]
+      },
+      "source_agent": "root-stability-review"
+    },
+    {
+      "client_id": "ROOT-LOOP-001",
+      "root_cause_key": "restaurant.sqlite.sync-lock-waits-block-event-loop",
+      "title": "Ожидание SQLite writer-блокировки останавливает общий event loop",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/engine.py",
+        "line": 44,
+        "end_line": 50,
+        "related": [
+          "app/restaurant.py:433",
+          "app/store.py:56"
+        ]
+      },
+      "surface_ids": [
+        "job:restaurant:tick",
+        "architecture:restaurant:sqlite"
+      ],
+      "impact": "При искусственно задержанной записи приостанавливается общий async event loop. Измерялась задержка heartbeat, а не productionHTTP; целостностьБД сохраняется.",
+      "cause": "Синхронные pump/tick с BEGIN IMMEDIATE исполняются непосредственно внутри async-worker; sqlite3 ждёт освобождения writer-lock в этом же потоке.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/loop-stall.json",
+          "command": ".venv/bin/python tests/stability/restaurant_loop_stall.py",
+          "observed": "Приwriter-lock3.000с heartbeat имел промежуток2.345с вместо20мс; до воздействия максимум0.020229с.",
+          "expected": "ОжиданиеDBlock не приостанавливает несвязанные asyncзадачи.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        ".venv/bin/python tests/stability/restaurant_loop_stall.py"
+      ],
+      "recommendation": "Вынести синхронный цикл restaurant pump/tick в ограниченный последовательный исполнитель вне event loop, сохранив порядок наблюдение→tick и транзакции. Повторы busy/locked выполнять вне основного цикла; проверить и DBчастьdelivery.",
+      "regression_test": "При3с чужойwriter-транзакции независимыйheartbeat продолжает работать; предлагаемый тестовый предел200мс. После освобождения задачи и дедлайны восстанавливаются бездубликатов.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "При3с чужойwriter-транзакции независимыйheartbeat продолжает работать; предлагаемый тестовый предел200мс. После освобождения задачи и дедлайны восстанавливаются бездубликатов.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Изолировать блокирующую работуSQLite от event loop, не ослабляя транзакции.",
+          "Сохранить последовательность обработки одного ресторанного цикла.",
+          "Повторить faulttest и нормальныйHTTPsoak."
+        ]
+      },
+      "source_agent": "root-stability-review"
+    },
+    {
+      "client_id": "REST-MQTT-001",
+      "root_cause_key": "restaurant.mqtt.uncaught-json-recursion-stops-network-thread",
+      "title": "Вложенный JSON останавливает MQTT-поток; корректные данные больше не принимаются",
+      "category": "resilience",
+      "domain": "performance",
+      "severity": "high",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant_feed.py",
+        "line": 149,
+        "end_line": 152,
+        "symbol": "RestaurantFeed.message",
+        "related": [
+          "app/restaurant_feed.py:100",
+          "app/restaurant_feed.py:67"
+        ]
+      },
+      "surface_ids": [
+        "integration:restaurant:mqtt"
+      ],
+      "impact": "Один некорректный camera_activity останавливает общий поток приёма ресторанных наблюдений. Флаг connected остаётся true; последующие корректные снимки не принимаются. Защита свежести ограничивает отображение старых данных, однако автоматическое восстановление потока отсутствует.",
+      "cause": "json.loads может возбуждать RecursionError, но обработчик ловит только ValueError и TypeError. Исключение выходит из Paho callback; существующий client блокирует повторный запуск через start().",
+      "evidence": [
+        {
+          "type": "mqtt",
+          "artifact": "evidence/transport-mqtt.json",
+          "command": ".venv/bin/python tests/stability/restaurant_transport.py --scope mqtt",
+          "observed": "На настоящем localhost MQTT: payload40001B с глубиной20000 вызвал RecursionError; Paho thread_alive=false, connected_flag=true, следующий корректный снимок не обработан.",
+          "expected": "Некорректное сообщение отклоняется; поток остаётся работоспособным и принимает следующий валидный снимок.",
+          "redacted": true
+        },
+        {
+          "type": "source",
+          "artifact": "evidence/transport-source-anchors.json",
+          "observed": "Исключение RecursionError отсутствует в обработчике; start возвращает при существующем client.",
+          "expected": "Отказ парсера не должен завершать транспортный поток.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "Запустить временный локальный MQTT-брокер, synthetic NVR и RestaurantFeed.",
+        "После успешного текущего снимка опубликовать в frigate/camera_activity строку из20000 открывающих скобок,0 и20000 закрывающих.",
+        "Опубликовать корректный снимок; проверить исключение callback, отсутствие живого Paho-потока и неизменившуюся метку снимка."
+      ],
+      "recommendation": "В RestaurantFeed.message обработать исчерпание глубины JSON как некорректное входное сообщение, не выпуская исключение в Paho callback. Ограничить сложность разбора и добавить наблюдаемую диагностику отказов callback/транспорта; нормальный следующий пакет должен восстанавливать текущие наблюдения без перезапуска приложения.",
+      "regression_test": "Реальный TCP MQTT: вложенный JSON в пределах лимита размера, затем валидный снимок с другим count; поток жив, новые данные применены, визит и дедлайн не сброшены.",
+      "metrics": [
+        {
+          "name": "payload_size",
+          "kind": "measured",
+          "value": 40001,
+          "unit": "bytes",
+          "method": "len of published UTF-8 ASCII payload",
+          "source": "evidence/transport-mqtt.json",
+          "confidence": 1.0
+        }
+      ],
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Повреждённый payload больше не прекращает приём данных для всех ресторанных столов.",
+        "steps": [
+          "Добавить безопасную обработку RecursionError и контролируемый отказ парсера.",
+          "Сохранить ограничение размера, добавить ограничение сложности и диагностический сигнал.",
+          "Проверить переживание плохого пакета и приём нового снимка через настоящий брокер."
+        ],
+        "tradeoffs": [
+          "Отбрасывание чрезмерно сложных сообщений должно явно диагностироваться; содержимое payload и секреты в лог не выводить."
+        ]
+      },
+      "source_agent": "performance-resilience-transport"
+    },
+    {
+      "client_id": "REST-TG-002",
+      "root_cause_key": "restaurant.telegram.ignores-provider-retry-after",
+      "title": "Telegram retry_after игнорируется, временный лимит приводит к преждевременному failed",
+      "category": "delivery",
+      "domain": "performance",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant.py",
+        "line": 610,
+        "end_line": 622,
+        "symbol": "RestaurantService.deliver",
+        "related": [
+          "app/restaurant.py:592"
+        ]
+      },
+      "surface_ids": [
+        "integration:restaurant:telegram"
+      ],
+      "impact": "Воспроизведён временный ответ429 с ожиданием3600с: восемь попыток исчерпаны за910 виртуальных секунд, задача переходит в failed и после окончания окна не повторяется. Внутреннее уведомление сохраняется; потеря касается автоматической внешней доставки.",
+      "cause": "После raise_for_status тело429 и parameters.retry_after не читаются. Расписание определяется только локальным экспоненциальным интервалом и лимитом8 попыток.",
+      "evidence": [
+        {
+          "type": "http_mock",
+          "artifact": "evidence/transport-delivery.json",
+          "command": ".venv/bin/python tests/stability/restaurant_transport.py --scope delivery",
+          "observed": "{'case': 'provider_retry_after_respected', 'status': 'failed', 'provider_retry_after_seconds': 3600, 'attempt_elapsed_virtual_seconds': [0.0, 10.0, 30.0, 70.0, 150.0, 310.0, 610.0, 910.0], 'final_state': 'failed', 'attempts_after_provider_window': 0, 'expected': 'Honor provider retry_after; keep task retryable through the declared temporary limit window', 'clock': 'virtual; HTTP outcomes mocked'}",
+          "expected": "Не повторять запрос раньше объявленного retry_after; временное ограничение не должно исчерпать очередь до разрешённой следующей попытки.",
+          "redacted": true
+        },
+        {
+          "type": "official_documentation",
+          "artifact": "evidence/transport-source-telegram.json",
+          "observed": "ResponseParameters.retry_after задаёт число секунд до допустимого повторного запроса.",
+          "expected": "Планировщик должен учитывать это окно.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "Создать одну ожидающую Telegram-задачу в временной базе.",
+        "MockTransport возвращает HTTP429 и parameters.retry_after=3600.",
+        "Вызвать доставку в каждый рассчитанный retry_at; наблюдать terminal failed на910-й секунде и отсутствие новых попыток после3600с."
+      ],
+      "recommendation": "Обрабатывать HTTP429 отдельно, валидировать parameters.retry_after и назначать retry_at не раньше указанного окна от фактического окончания попытки. Сохранять обычный ограниченный backoff для прочих ошибок и отмену подтверждённых/закрытых задач.",
+      "regression_test": "429 с retry_after=600: до600с новых запросов нет, после разрешённого времени HTTP200 переводит задачу в sent; временное окно само по себе не приводит к failed.",
+      "metrics": [
+        {
+          "name": "terminal_failure_after",
+          "kind": "measured",
+          "value": 910,
+          "unit": "virtual seconds",
+          "method": "Actual delivery code invoked at persisted retry_at with MockTransport429; no wall-clock3600s wait",
+          "source": "evidence/transport-delivery.json",
+          "confidence": 1.0
+        }
+      ],
+      "remediation": {
+        "priority": "P2",
+        "effort": "S",
+        "expected_effect": "Доставка выдерживает объявленный провайдером временный лимит без преждевременной потери автоматического повтора.",
+        "steps": [
+          "Разбирать параметры429 до общего HTTPError path.",
+          "Вычислять retry_at по фактическому времени попытки и положительному retry_after.",
+          "Добавить детерминированный тест окна429 и последующего успешного ответа."
+        ],
+        "tradeoffs": [
+          "Задачи могут оставаться pending дольше; их возраст и причина задержки должны быть видимы в панели."
+        ]
+      },
+      "standards": [
+        "https://core.telegram.org/bots/api#responseparameters"
+      ],
+      "source_agent": "performance-resilience-transport"
+    },
+    {
+      "client_id": "REST-TG-003",
+      "root_cause_key": "restaurant.telegram.global-fifo-retries-starve-escalations",
+      "title": "Повторы ошибок официанту задерживают первую отправку доступному менеджеру",
+      "category": "delivery",
+      "domain": "performance",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant.py",
+        "line": 585,
+        "end_line": 594,
+        "symbol": "RestaurantService.deliver",
+        "related": [
+          "app/restaurant.py:610",
+          "app/restaurant.py:621",
+          "app/engine.py:52"
+        ]
+      },
+      "surface_ids": [
+        "integration:restaurant:telegram",
+        "job:restaurant:tick"
+      ],
+      "impact": "В реальном времени при10 старых задачах официанту и ответе500 через2с менеджер с немедленным успешным mock-ответом ждёт 65.125с после создания эскалации. Внутренний120-секундный таймер при этом срабатывает своевременно; проблема ограничена внешней очередью.",
+      "cause": "Один worker выбирает по исходному at глобально и последовательно отправляет10 задач. Старые неуспешные задачи сохраняют приоритет перед новой эскалацией. now фиксируется на всю пачку, поэтому retry_at некоторых ошибок успевает истечь до завершения этой же пачки.",
+      "evidence": [
+        {
+          "type": "http_mock_realtime",
+          "artifact": "evidence/transport-delivery.json",
+          "command": ".venv/bin/python tests/stability/restaurant_transport.py --scope delivery",
+          "observed": "30 запросов официанту прежде первой попытки менеджеру; задержка менеджера 65.125447с. Лаг серверного дедлайна 0.012247с.",
+          "expected": "Новая срочная эскалация доступному получателю не должна ждать нескольких кругов повторов другого получателя.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "Создать10 визитов с Telegram-задачами одному официанту;120-секундный deadline наступает через1с.",
+        "MockTransport для официанта возвращает500 после2с; менеджеру отвечает200 немедленно.",
+        "Запустить настоящие Engine.restaurant_work и Engine.restaurant_delivery; измерить создание in-app escalation и начало первой HTTP-попытки менеджеру."
+      ],
+      "recommendation": "Разделить приоритет первой отправки срочной эскалации и повторов старых ошибок, обеспечить справедливое обслуживание получателей. Пересчитывать время отдельно при захвате и завершении каждой попытки, чтобы backoff начинался после ответа; при использовании параллелизма сохранить ограничение провайдера и атомарный захват задач.",
+      "regression_test": "В том же сценарии10 медленных ошибок новая эскалация должна получить первую попытку до второго круга повторов официанту; при2с mock-ошибке целевой предел теста5с после создания эскалации. In-app таймер продолжает работать и отменённые задачи не отправляются.",
+      "metrics": [
+        {
+          "name": "manager_external_delivery_lag",
+          "kind": "measured",
+          "value": 65.1254472732544,
+          "unit": "seconds",
+          "method": "time.monotonic with real Engine workers; synthetic visits seeded119s before start; MockTransport2s500 waiter / immediate200 manager",
+          "source": "evidence/transport-delivery.json",
+          "confidence": 1.0
+        },
+        {
+          "name": "in_app_deadline_lag",
+          "kind": "measured",
+          "value": 0.012246847152709961,
+          "unit": "seconds",
+          "method": "Persisted escalation timestamp minus persisted120s deadline under real-time slow provider workload",
+          "source": "evidence/transport-delivery.json",
+          "confidence": 1.0
+        }
+      ],
+      "remediation": {
+        "priority": "P2",
+        "effort": "M",
+        "expected_effect": "Ошибки одного адресата меньше задерживают новые задачи и срочные эскалации другим адресатам.",
+        "steps": [
+          "Пересчитывать время в каждой попытке и после сетевого ответа.",
+          "Добавить приоритет/справедливое планирование первых срочных отправок перед повторами старых ошибок.",
+          "Сохранить ограниченный параллелизм, провайдерские лимиты и атомарную аренду задачи.",
+          "Повторить измеряемый сценарий со slow waiter и healthy manager."
+        ],
+        "tradeoffs": [
+          "Приоритет эскалаций не должен навсегда вытеснять новые вызовы официанту; это нужно проверять отдельным тестом справедливости."
+        ]
+      },
+      "source_agent": "performance-resilience-transport"
+    }
+  ]
+}

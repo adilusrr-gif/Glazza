@@ -1,0 +1,32 @@
+{
+  "finding_id": "ROOT-UI-001",
+  "state": "verified",
+  "environment": "Independent Node VM synthetic DOM/fetch/clock; all scheduled timeouts and intervals are executed; no physical browser claim",
+  "source": [
+    "app/static/staff.js:27",
+    "app/static/staff.js:29",
+    "app/static/staff.js:75-90",
+    "app/static/staff.js:96-101"
+  ],
+  "cases": [
+    {
+      "variant": "fetch resolved but response.json never settles",
+      "simulated_stall_seconds": 180,
+      "requests_before_release": 2,
+      "requests_after_rejection_and_next_poll": 3,
+      "stale_state_displayed": true,
+      "manual_refresh_while_pending": "no new request",
+      "abort_signal_present": false
+    },
+    {
+      "variant": "POST request never settles",
+      "simulated_stall_seconds": 180,
+      "requests_before_release": 2,
+      "requests_after_rejection": 3,
+      "manual_refresh_while_pending": "no new request",
+      "abort_signal_present": false
+    }
+  ],
+  "expected": "Bound request and response-body time, clear busy guards, then refresh actual state after uncertainty.",
+  "observed": "A pending read body or POST blocks all new polling and manual refresh for the entire180s virtual window; explicit rejection releases the guard."
+}

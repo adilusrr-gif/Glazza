@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "method": "Manual causal review, no cross-agent duplicates; UI GET/body/POST symptoms already grouped under one unbounded-request cause. Queue priority and retry_after require separate remedies.",
+  "raw_count": 6,
+  "canonical_count": 6,
+  "duplicates_collapsed": 0,
+  "review_required": [],
+  "decisions": [
+    {
+      "finding_id": "ROOT-ALERT-001",
+      "source_ids": [
+        "ROOT-ALERT-001"
+      ],
+      "root_cause_key": "restaurant.snapshot.completed-history-hides-open-alerts",
+      "decision": "keep_separate",
+      "reason": "Distinct control and regression test."
+    },
+    {
+      "finding_id": "ROOT-UI-001",
+      "source_ids": [
+        "ROOT-UI-001"
+      ],
+      "root_cause_key": "restaurant.ui.unbounded-request-blocks-polling",
+      "decision": "keep_separate",
+      "reason": "Distinct control and regression test."
+    },
+    {
+      "finding_id": "ROOT-LOOP-001",
+      "source_ids": [
+        "ROOT-LOOP-001"
+      ],
+      "root_cause_key": "restaurant.sqlite.sync-lock-waits-block-event-loop",
+      "decision": "keep_separate",
+      "reason": "Distinct control and regression test."
+    },
+    {
+      "finding_id": "REST-MQTT-001",
+      "source_ids": [
+        "REST-MQTT-001"
+      ],
+      "root_cause_key": "restaurant.mqtt.uncaught-json-recursion-stops-network-thread",
+      "decision": "keep_separate",
+      "reason": "Distinct control and regression test."
+    },
+    {
+      "finding_id": "REST-TG-002",
+      "source_ids": [
+        "REST-TG-002"
+      ],
+      "root_cause_key": "restaurant.telegram.ignores-provider-retry-after",
+      "decision": "keep_separate",
+      "reason": "Distinct control and regression test."
+    },
+    {
+      "finding_id": "REST-TG-003",
+      "source_ids": [
+        "REST-TG-003"
+      ],
+      "root_cause_key": "restaurant.telegram.global-fifo-retries-starve-escalations",
+      "decision": "keep_separate",
+      "reason": "Distinct control and regression test."
+    }
+  ]
+}

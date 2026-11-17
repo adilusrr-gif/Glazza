@@ -1,0 +1,2181 @@
+{
+  "schema_version": "1.0",
+  "project": "Glazza",
+  "target_commit": "98a22174f44097d53c12e1febb870951ff914aba",
+  "generated_at": "2026-11-17T06:43:25.779820+00:00",
+  "verdict": {
+    "overall": "INCOMPLETE",
+    "scope": "Production acceptance cannot be concluded: physical environment absent and role/domain variants remain untested.",
+    "laboratory": "CONDITIONAL GO",
+    "laboratory_scope": "Normal synthetic workload and durable state passed;1high and5medium confirmed defects remain.",
+    "deployment_recommendation": "До исправлений не рекомендован автономный круглосуточный запуск. Контролируемый технический пилот возможен с явными ограничениями.",
+    "canonical_quality_score": null
+  },
+  "coverage_counts": {
+    "surfaces_discovered": 30,
+    "surfaces_tested": 29,
+    "surfaces_passed": 23,
+    "surfaces_failed": 6,
+    "surfaces_blocked": 1,
+    "surfaces_untested": 0,
+    "surface_domain_pairs": 56,
+    "pairs_tested": 46,
+    "pairs_passed": 37,
+    "pairs_failed": 9,
+    "pairs_blocked": 1,
+    "pairs_untested": 9,
+    "api_endpoints_exercised": 12,
+    "api_endpoints_discovered": 12
+  },
+  "domain_counts": {
+    "api": {
+      "discovered": 12,
+      "tested": 12,
+      "passed": 11,
+      "failed": 1
+    },
+    "architecture": {
+      "discovered": 2,
+      "tested": 2,
+      "failed": 2
+    },
+    "authorization": {
+      "discovered": 13,
+      "tested": 6,
+      "passed": 6,
+      "untested": 7
+    },
+    "business_efficiency": {
+      "discovered": 1,
+      "tested": 1,
+      "passed": 1
+    },
+    "code_quality": {
+      "discovered": 1,
+      "tested": 1,
+      "failed": 1
+    },
+    "data": {
+      "discovered": 9,
+      "tested": 8,
+      "passed": 8,
+      "untested": 1
+    },
+    "functional": {
+      "discovered": 9,
+      "tested": 8,
+      "passed": 6,
+      "failed": 2,
+      "blocked": 1
+    },
+    "operational_cost": {
+      "discovered": 2,
+      "tested": 1,
+      "untested": 1,
+      "passed": 1
+    },
+    "performance": {
+      "discovered": 7,
+      "tested": 7,
+      "passed": 4,
+      "failed": 3
+    }
+  },
+  "findings": [
+    {
+      "client_id": "REST-MQTT-001",
+      "root_cause_key": "restaurant.mqtt.uncaught-json-recursion-stops-network-thread",
+      "title": "Вложенный JSON останавливает MQTT-поток; корректные данные больше не принимаются",
+      "category": "resilience",
+      "domain": "performance",
+      "severity": "high",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant_feed.py",
+        "line": 149,
+        "end_line": 152,
+        "symbol": "RestaurantFeed.message",
+        "related": [
+          "app/restaurant_feed.py:100",
+          "app/restaurant_feed.py:67"
+        ]
+      },
+      "surface_ids": [
+        "integration:restaurant:mqtt"
+      ],
+      "impact": "Один некорректный camera_activity останавливает общий поток приёма ресторанных наблюдений. Флаг connected остаётся true; последующие корректные снимки не принимаются. Защита свежести ограничивает отображение старых данных, однако автоматическое восстановление потока отсутствует.",
+      "cause": "json.loads может возбуждать RecursionError, но обработчик ловит только ValueError и TypeError. Исключение выходит из Paho callback; существующий client блокирует повторный запуск через start().",
+      "evidence": [
+        {
+          "type": "mqtt",
+          "artifact": "evidence/transport-mqtt.json",
+          "command": ".venv/bin/python tests/stability/restaurant_transport.py --scope mqtt",
+          "observed": "На настоящем localhost MQTT: payload40001B с глубиной20000 вызвал RecursionError; Paho thread_alive=false, connected_flag=true, следующий корректный снимок не обработан.",
+          "expected": "Некорректное сообщение отклоняется; поток остаётся работоспособным и принимает следующий валидный снимок.",
+          "redacted": true
+        },
+        {
+          "type": "source",
+          "artifact": "evidence/transport-source-anchors.json",
+          "observed": "Исключение RecursionError отсутствует в обработчике; start возвращает при существующем client.",
+          "expected": "Отказ парсера не должен завершать транспортный поток.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "Запустить временный локальный MQTT-брокер, synthetic NVR и RestaurantFeed.",
+        "После успешного текущего снимка опубликовать в frigate/camera_activity строку из20000 открывающих скобок,0 и20000 закрывающих.",
+        "Опубликовать корректный снимок; проверить исключение callback, отсутствие живого Paho-потока и неизменившуюся метку снимка."
+      ],
+      "recommendation": "В RestaurantFeed.message обработать исчерпание глубины JSON как некорректное входное сообщение, не выпуская исключение в Paho callback. Ограничить сложность разбора и добавить наблюдаемую диагностику отказов callback/транспорта; нормальный следующий пакет должен восстанавливать текущие наблюдения без перезапуска приложения.",
+      "regression_test": "Реальный TCP MQTT: вложенный JSON в пределах лимита размера, затем валидный снимок с другим count; поток жив, новые данные применены, визит и дедлайн не сброшены.",
+      "metrics": [
+        {
+          "name": "payload_size",
+          "kind": "measured",
+          "value": 40001,
+          "unit": "bytes",
+          "method": "len of published UTF-8 ASCII payload",
+          "source": "evidence/transport-mqtt.json",
+          "confidence": 1.0
+        }
+      ],
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Повреждённый payload больше не прекращает приём данных для всех ресторанных столов.",
+        "steps": [
+          "Добавить безопасную обработку RecursionError и контролируемый отказ парсера.",
+          "Сохранить ограничение размера, добавить ограничение сложности и диагностический сигнал.",
+          "Проверить переживание плохого пакета и приём нового снимка через настоящий брокер."
+        ],
+        "tradeoffs": [
+          "Отбрасывание чрезмерно сложных сообщений должно явно диагностироваться; содержимое payload и секреты в лог не выводить."
+        ]
+      },
+      "source_agent": "performance-resilience-transport",
+      "id": "REST-MQTT-001",
+      "domains": [
+        "functional",
+        "performance"
+      ],
+      "violation_example": {
+        "file": "app/restaurant_feed.py",
+        "line": 149,
+        "end_line": 152,
+        "source_sha256": "c825b915f2a7176f76f0b51f1cb3ddaa5c756ce3f6e98d4671f09ff7f82a30a6",
+        "exact_source": "            try:\n                cameras = json.loads(value)\n            except (ValueError, TypeError):\n                return"
+      },
+      "evidence_hashes": {
+        "evidence/transport-mqtt.json": "0ed573714e9a0c989f704167cf645a96c5f373c9201b32d6a0a3707e4c7cd045",
+        "evidence/transport-source-anchors.json": "54f4cf06bc1299e0157cf3b5102c15e0529001da38f552dc406e4d7d47055f45"
+      },
+      "evidence_grade": "A",
+      "verification": {
+        "finding_id": "REST-MQTT-001",
+        "state": "verified",
+        "method": "reproduced",
+        "evidence": [
+          "evidence/verification/root-mqtt.json"
+        ],
+        "notes": "Separate broker/topic and60001-byte depth30000 payload; dead Paho thread, connected flag true, valid next snapshot ignored. Final TTL check uses+16virtual seconds."
+      },
+      "claim_integrity": {
+        "observation": "independently_verified",
+        "recommendation": "grounded",
+        "fix_applied": false,
+        "fix_examples": "none"
+      }
+    },
+    {
+      "client_id": "REST-TG-002",
+      "root_cause_key": "restaurant.telegram.ignores-provider-retry-after",
+      "title": "Telegram retry_after игнорируется, временный лимит приводит к преждевременному failed",
+      "category": "delivery",
+      "domain": "performance",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant.py",
+        "line": 610,
+        "end_line": 622,
+        "symbol": "RestaurantService.deliver",
+        "related": [
+          "app/restaurant.py:592"
+        ]
+      },
+      "surface_ids": [
+        "integration:restaurant:telegram"
+      ],
+      "impact": "Воспроизведён временный ответ429 с ожиданием3600с: восемь попыток исчерпаны за910 виртуальных секунд, задача переходит в failed и после окончания окна не повторяется. Внутреннее уведомление сохраняется; потеря касается автоматической внешней доставки.",
+      "cause": "После raise_for_status тело429 и parameters.retry_after не читаются. Расписание определяется только локальным экспоненциальным интервалом и лимитом8 попыток.",
+      "evidence": [
+        {
+          "type": "http_mock",
+          "artifact": "evidence/transport-delivery.json",
+          "command": ".venv/bin/python tests/stability/restaurant_transport.py --scope delivery",
+          "observed": "{'case': 'provider_retry_after_respected', 'status': 'failed', 'provider_retry_after_seconds': 3600, 'attempt_elapsed_virtual_seconds': [0.0, 10.0, 30.0, 70.0, 150.0, 310.0, 610.0, 910.0], 'final_state': 'failed', 'attempts_after_provider_window': 0, 'expected': 'Honor provider retry_after; keep task retryable through the declared temporary limit window', 'clock': 'virtual; HTTP outcomes mocked'}",
+          "expected": "Не повторять запрос раньше объявленного retry_after; временное ограничение не должно исчерпать очередь до разрешённой следующей попытки.",
+          "redacted": true
+        },
+        {
+          "type": "official_documentation",
+          "artifact": "evidence/transport-source-telegram.json",
+          "observed": "ResponseParameters.retry_after задаёт число секунд до допустимого повторного запроса.",
+          "expected": "Планировщик должен учитывать это окно.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "Создать одну ожидающую Telegram-задачу в временной базе.",
+        "MockTransport возвращает HTTP429 и parameters.retry_after=3600.",
+        "Вызвать доставку в каждый рассчитанный retry_at; наблюдать terminal failed на910-й секунде и отсутствие новых попыток после3600с."
+      ],
+      "recommendation": "Обрабатывать HTTP429 отдельно, валидировать parameters.retry_after и назначать retry_at не раньше указанного окна от фактического окончания попытки. Сохранять обычный ограниченный backoff для прочих ошибок и отмену подтверждённых/закрытых задач.",
+      "regression_test": "429 с retry_after=600: до600с новых запросов нет, после разрешённого времени HTTP200 переводит задачу в sent; временное окно само по себе не приводит к failed.",
+      "metrics": [
+        {
+          "name": "terminal_failure_after",
+          "kind": "measured",
+          "value": 910,
+          "unit": "virtual seconds",
+          "method": "Actual delivery code invoked at persisted retry_at with MockTransport429; no wall-clock3600s wait",
+          "source": "evidence/transport-delivery.json",
+          "confidence": 1.0
+        }
+      ],
+      "remediation": {
+        "priority": "P2",
+        "effort": "S",
+        "expected_effect": "Доставка выдерживает объявленный провайдером временный лимит без преждевременной потери автоматического повтора.",
+        "steps": [
+          "Разбирать параметры429 до общего HTTPError path.",
+          "Вычислять retry_at по фактическому времени попытки и положительному retry_after.",
+          "Добавить детерминированный тест окна429 и последующего успешного ответа."
+        ],
+        "tradeoffs": [
+          "Задачи могут оставаться pending дольше; их возраст и причина задержки должны быть видимы в панели."
+        ]
+      },
+      "standards": [
+        "https://core.telegram.org/bots/api#responseparameters"
+      ],
+      "source_agent": "performance-resilience-transport",
+      "id": "REST-TG-002",
+      "domains": [
+        "performance"
+      ],
+      "violation_example": {
+        "file": "app/restaurant.py",
+        "line": 610,
+        "end_line": 622,
+        "source_sha256": "3d53b0aa1115335ef55fcdac3567371065edca92ebd1ddb7931c291cb6ec4982",
+        "exact_source": "                response = await client.post('https://api.telegram.org/bot' + self.settings.telegram_bot_token + '/sendMessage',\n                                             json={'chat_id': alert['telegram_chat_id'], 'text': alert['message']}, timeout=10)\n                response.raise_for_status()\n                if response.json().get('ok') is not True:\n                    raise ValueError('Delivery rejected')\n            except (httpx.HTTPError, ValueError, TypeError, AttributeError):\n                error = 'Не удалось доставить сообщение. Проверьте бота и chat ID.'\n            with self.store.connect() as db:\n                db.execute('BEGIN IMMEDIATE')\n                if error:\n                    attempts = alert['delivery_attempts'] + 1\n                    db.execute(\"UPDATE restaurant_alerts SET delivery_state=?,retry_at=?,delivery_error=? WHERE id=? AND delivery_state='sending'\",\n                               ('failed' if attempts >= 8 else 'pending', now + min(300, 5 * 2 ** attempts), error, alert['id']))"
+      },
+      "evidence_hashes": {
+        "evidence/transport-delivery.json": "91a06231c57e6b60245a5a36c080ec17225c8ec9002036259bfaf027e6dda345",
+        "evidence/transport-source-telegram.json": "e5cdf1a908a78dffb7e21e7862edddedab3a7aae752cbdb1addd42bb4f645aa5"
+      },
+      "evidence_grade": "B",
+      "verification": {
+        "finding_id": "REST-TG-002",
+        "state": "not_attempted",
+        "notes": "Reproducible primary runtime evidence exists; no additional independent runtime replay."
+      },
+      "claim_integrity": {
+        "observation": "source_and_artifact",
+        "recommendation": "grounded",
+        "fix_applied": false,
+        "fix_examples": "none"
+      }
+    },
+    {
+      "client_id": "REST-TG-003",
+      "root_cause_key": "restaurant.telegram.global-fifo-retries-starve-escalations",
+      "title": "Повторы ошибок официанту задерживают первую отправку доступному менеджеру",
+      "category": "delivery",
+      "domain": "performance",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant.py",
+        "line": 585,
+        "end_line": 594,
+        "symbol": "RestaurantService.deliver",
+        "related": [
+          "app/restaurant.py:610",
+          "app/restaurant.py:621",
+          "app/engine.py:52"
+        ]
+      },
+      "surface_ids": [
+        "integration:restaurant:telegram",
+        "job:restaurant:tick"
+      ],
+      "impact": "В реальном времени при10 старых задачах официанту и ответе500 через2с менеджер с немедленным успешным mock-ответом ждёт 65.125с после создания эскалации. Внутренний120-секундный таймер при этом срабатывает своевременно; проблема ограничена внешней очередью.",
+      "cause": "Один worker выбирает по исходному at глобально и последовательно отправляет10 задач. Старые неуспешные задачи сохраняют приоритет перед новой эскалацией. now фиксируется на всю пачку, поэтому retry_at некоторых ошибок успевает истечь до завершения этой же пачки.",
+      "evidence": [
+        {
+          "type": "http_mock_realtime",
+          "artifact": "evidence/transport-delivery.json",
+          "command": ".venv/bin/python tests/stability/restaurant_transport.py --scope delivery",
+          "observed": "30 запросов официанту прежде первой попытки менеджеру; задержка менеджера 65.125447с. Лаг серверного дедлайна 0.012247с.",
+          "expected": "Новая срочная эскалация доступному получателю не должна ждать нескольких кругов повторов другого получателя.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "Создать10 визитов с Telegram-задачами одному официанту;120-секундный deadline наступает через1с.",
+        "MockTransport для официанта возвращает500 после2с; менеджеру отвечает200 немедленно.",
+        "Запустить настоящие Engine.restaurant_work и Engine.restaurant_delivery; измерить создание in-app escalation и начало первой HTTP-попытки менеджеру."
+      ],
+      "recommendation": "Разделить приоритет первой отправки срочной эскалации и повторов старых ошибок, обеспечить справедливое обслуживание получателей. Пересчитывать время отдельно при захвате и завершении каждой попытки, чтобы backoff начинался после ответа; при использовании параллелизма сохранить ограничение провайдера и атомарный захват задач.",
+      "regression_test": "В том же сценарии10 медленных ошибок новая эскалация должна получить первую попытку до второго круга повторов официанту; при2с mock-ошибке целевой предел теста5с после создания эскалации. In-app таймер продолжает работать и отменённые задачи не отправляются.",
+      "metrics": [
+        {
+          "name": "manager_external_delivery_lag",
+          "kind": "measured",
+          "value": 65.1254472732544,
+          "unit": "seconds",
+          "method": "time.monotonic with real Engine workers; synthetic visits seeded119s before start; MockTransport2s500 waiter / immediate200 manager",
+          "source": "evidence/transport-delivery.json",
+          "confidence": 1.0
+        },
+        {
+          "name": "in_app_deadline_lag",
+          "kind": "measured",
+          "value": 0.012246847152709961,
+          "unit": "seconds",
+          "method": "Persisted escalation timestamp minus persisted120s deadline under real-time slow provider workload",
+          "source": "evidence/transport-delivery.json",
+          "confidence": 1.0
+        }
+      ],
+      "remediation": {
+        "priority": "P2",
+        "effort": "M",
+        "expected_effect": "Ошибки одного адресата меньше задерживают новые задачи и срочные эскалации другим адресатам.",
+        "steps": [
+          "Пересчитывать время в каждой попытке и после сетевого ответа.",
+          "Добавить приоритет/справедливое планирование первых срочных отправок перед повторами старых ошибок.",
+          "Сохранить ограниченный параллелизм, провайдерские лимиты и атомарную аренду задачи.",
+          "Повторить измеряемый сценарий со slow waiter и healthy manager."
+        ],
+        "tradeoffs": [
+          "Приоритет эскалаций не должен навсегда вытеснять новые вызовы официанту; это нужно проверять отдельным тестом справедливости."
+        ]
+      },
+      "source_agent": "performance-resilience-transport",
+      "id": "REST-TG-003",
+      "domains": [
+        "performance"
+      ],
+      "violation_example": {
+        "file": "app/restaurant.py",
+        "line": 585,
+        "end_line": 594,
+        "source_sha256": "3d53b0aa1115335ef55fcdac3567371065edca92ebd1ddb7931c291cb6ec4982",
+        "exact_source": "        now = _at(now)\n        for _ in range(10):\n            with self.store.connect() as db:\n                db.execute('BEGIN IMMEDIATE')\n                row = db.execute('''SELECT a.*,s.telegram_chat_id,s.enabled AS recipient_enabled,s.site_id AS recipient_site\n                    FROM restaurant_alerts a LEFT JOIN restaurant_staff s ON s.id=a.recipient_id\n                    WHERE a.ack_at IS NULL AND a.resolved_at IS NULL AND\n                    ((a.delivery_state='pending' AND a.delivery_attempts<8 AND a.retry_at<=?) OR\n                     (a.delivery_state='sending' AND a.delivery_started<?))\n                    ORDER BY a.at LIMIT 1''', (now, now - 60)).fetchone()"
+      },
+      "evidence_hashes": {
+        "evidence/transport-delivery.json": "91a06231c57e6b60245a5a36c080ec17225c8ec9002036259bfaf027e6dda345"
+      },
+      "evidence_grade": "B",
+      "verification": {
+        "finding_id": "REST-TG-003",
+        "state": "not_attempted",
+        "notes": "Reproducible primary runtime evidence exists; no additional independent runtime replay."
+      },
+      "claim_integrity": {
+        "observation": "source_and_artifact",
+        "recommendation": "grounded",
+        "fix_applied": false,
+        "fix_examples": "none"
+      }
+    },
+    {
+      "client_id": "ROOT-ALERT-001",
+      "root_cause_key": "restaurant.snapshot.completed-history-hides-open-alerts",
+      "title": "Закрытая история вытесняет незакрытые уведомления из рабочего списка",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/restaurant.py",
+        "line": 565,
+        "end_line": 569,
+        "related": [
+          "app/static/staff.js:58",
+          "app/static/restaurant.js:41"
+        ]
+      },
+      "surface_ids": [
+        "api:GET:/api/restaurant/portal"
+      ],
+      "impact": "Менеджер перестаёт видеть незакрытую задачу в списке уведомлений после200 более новых завершённых задач. Просроченная карточка стола остаётся видимой; запись вБД не теряется.",
+      "cause": "Общий LIMIT200 применяется к истории до выбора активных задач; клиент затем отбрасывает закрытые записи.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/alert-visibility.json",
+          "command": ".venv/bin/python tests/stability/restaurant_alert_visibility.py",
+          "observed": "Из201 созданного визита осталась1открытая задача вБД; portal вернул200закрытых задач и0открытых.",
+          "expected": "Открытые задачи доступны независимо от количества более новой закрытой истории.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        ".venv/bin/python tests/stability/restaurant_alert_visibility.py"
+      ],
+      "recommendation": "В RestaurantService.snapshot отдельно выбирать незакрытые адресные задачи; историю ограничивать и листать независимо. Если самих открытых задач больше лимита, добавить явное продолжение/счётчик, сохранив site/recipient фильтры.",
+      "regression_test": "Одна старая открытая задача остаётся видимой при199,200,203новых закрытых; у другого сотрудника/объекта она недоступна.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Одна старая открытая задача остаётся видимой при199,200,203новых закрытых; у другого сотрудника/объекта она недоступна.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Разделить запросы активных задач и истории.",
+          "Сохранить ограничение ответа через отдельную пагинацию истории и открытых задач.",
+          "Проверить границу200 и область доступа."
+        ]
+      },
+      "source_agent": "root-stability-review",
+      "id": "ROOT-ALERT-001",
+      "domains": [
+        "api",
+        "functional"
+      ],
+      "violation_example": {
+        "file": "app/restaurant.py",
+        "line": 565,
+        "end_line": 569,
+        "source_sha256": "3d53b0aa1115335ef55fcdac3567371065edca92ebd1ddb7931c291cb6ec4982",
+        "exact_source": "            clause, params = (' WHERE site_id=?', [site_id]) if site_id else ('', [])\n            if staff:\n                clause += ' AND recipient_id=?'\n                params.append(staff['id'])\n            alerts = [dict(a) for a in db.execute('SELECT * FROM restaurant_alerts' + clause + ' ORDER BY at DESC,id DESC LIMIT 200', params)]"
+      },
+      "evidence_hashes": {
+        "evidence/alert-visibility.json": "18e1da012113af035f44a1c48a08b0a88e7c9ec6d7d1b6a9d0c9475b2b6a0739"
+      },
+      "evidence_grade": "A",
+      "verification": {
+        "finding_id": "ROOT-ALERT-001",
+        "state": "verified",
+        "method": "reproduced",
+        "evidence": [
+          "evidence/verification/state-review-alerts.json"
+        ],
+        "notes": "Independent fresh SQLite fixture and HTTP portal, 203 closed visits. Exact cap transition verified at199/200 records. Database live task survives; overdue table card remains visible; task list loses open alert."
+      },
+      "claim_integrity": {
+        "observation": "independently_verified",
+        "recommendation": "grounded",
+        "fix_applied": false,
+        "fix_examples": "none"
+      }
+    },
+    {
+      "client_id": "ROOT-LOOP-001",
+      "root_cause_key": "restaurant.sqlite.sync-lock-waits-block-event-loop",
+      "title": "Ожидание SQLite writer-блокировки останавливает общий event loop",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/engine.py",
+        "line": 44,
+        "end_line": 50,
+        "related": [
+          "app/restaurant.py:433",
+          "app/store.py:56"
+        ]
+      },
+      "surface_ids": [
+        "job:restaurant:tick",
+        "architecture:restaurant:sqlite"
+      ],
+      "impact": "При искусственно задержанной записи приостанавливается общий async event loop. Измерялась задержка heartbeat, а не productionHTTP; целостностьБД сохраняется.",
+      "cause": "Синхронные pump/tick с BEGIN IMMEDIATE исполняются непосредственно внутри async-worker; sqlite3 ждёт освобождения writer-lock в этом же потоке.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/loop-stall.json",
+          "command": ".venv/bin/python tests/stability/restaurant_loop_stall.py",
+          "observed": "Приwriter-lock3.000с heartbeat имел промежуток2.345с вместо20мс; до воздействия максимум0.020229с.",
+          "expected": "ОжиданиеDBlock не приостанавливает несвязанные asyncзадачи.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        ".venv/bin/python tests/stability/restaurant_loop_stall.py"
+      ],
+      "recommendation": "Вынести синхронный цикл restaurant pump/tick в ограниченный последовательный исполнитель вне event loop, сохранив порядок наблюдение→tick и транзакции. Повторы busy/locked выполнять вне основного цикла; проверить и DBчастьdelivery.",
+      "regression_test": "При3с чужойwriter-транзакции независимыйheartbeat продолжает работать; предлагаемый тестовый предел200мс. После освобождения задачи и дедлайны восстанавливаются бездубликатов.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "При3с чужойwriter-транзакции независимыйheartbeat продолжает работать; предлагаемый тестовый предел200мс. После освобождения задачи и дедлайны восстанавливаются бездубликатов.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Изолировать блокирующую работуSQLite от event loop, не ослабляя транзакции.",
+          "Сохранить последовательность обработки одного ресторанного цикла.",
+          "Повторить faulttest и нормальныйHTTPsoak."
+        ]
+      },
+      "source_agent": "root-stability-review",
+      "id": "ROOT-LOOP-001",
+      "domains": [
+        "performance",
+        "architecture",
+        "code_quality"
+      ],
+      "violation_example": {
+        "file": "app/engine.py",
+        "line": 44,
+        "end_line": 50,
+        "source_sha256": "b7ccece9a663e93b740af872209058d107cd930864bff93ee1c14c1037e28424",
+        "exact_source": "    async def restaurant_work(self):\n        while True:\n            if not self.settings.demo:\n                now = time.time()\n                self.restaurant_feed.pump(self.restaurant, self.camera_signal, now=now)\n                self.restaurant.tick(now=now)\n            await asyncio.sleep(1)"
+      },
+      "evidence_hashes": {
+        "evidence/loop-stall.json": "bc4e1bd65d8be0448f33cf863e730afd6008ec0f66ff8ebba0aeff538537623c"
+      },
+      "evidence_grade": "B",
+      "verification": {
+        "finding_id": "ROOT-LOOP-001",
+        "state": "not_attempted",
+        "notes": "Reproducible primary runtime evidence exists; no additional independent runtime replay."
+      },
+      "claim_integrity": {
+        "observation": "source_and_artifact",
+        "recommendation": "grounded",
+        "fix_applied": false,
+        "fix_examples": "none"
+      }
+    },
+    {
+      "client_id": "ROOT-UI-001",
+      "root_cause_key": "restaurant.ui.unbounded-request-blocks-polling",
+      "title": "Незавершающийся запрос блокирует обновление экрана сотрудника",
+      "category": "resilience",
+      "severity": "medium",
+      "confidence": 1.0,
+      "status": "confirmed",
+      "synthetic": false,
+      "location": {
+        "file": "app/static/staff.js",
+        "line": 26,
+        "end_line": 35,
+        "related": [
+          "app/static/staff.js:75",
+          "app/static/staff.js:96",
+          "app/static/app.js:13"
+        ]
+      },
+      "surface_ids": [
+        "ui:restaurant:staff"
+      ],
+      "impact": "При зависании GET, тела ответа или POST дальнейший опрос и ручное обновление не начинаются. Интерфейс помечает данные устаревшими, серверные таймеры продолжают работу.",
+      "cause": "У запроса нет ограниченного срока выполнения/отмены; requestBusy/actionBusy освобождаются только после завершения Promise.",
+      "evidence": [
+        {
+          "type": "runtime",
+          "artifact": "evidence/ui-faults.json",
+          "command": "node tests/stability/restaurant_ui_faults.js",
+          "observed": "В VM-сценарии300виртуальных секунд не было новых запросов даже после ручногоrefresh; послеsettle запросы возобновились. Независимо проверено зависание response.json.",
+          "expected": "Зависший запрос завершается по ограниченному таймауту, после чего возможны новый опрос и восстановление.",
+          "redacted": true
+        }
+      ],
+      "reproduction": [
+        "node tests/stability/restaurant_ui_faults.js"
+      ],
+      "recommendation": "Ввести AbortController с таймаутом, охватывающим fetch и чтение тела; освобождать блокировки в finally. После таймаута записи сначала перечитать серверное состояние, сохраняя visit_id/revision, а не вслепую повторять действие.",
+      "regression_test": "Незавершённые headers/body и POST не блокируют опрос дольше заданного таймаута; поздний ответ не перезаписывает новое состояние; повтор не влияет на новый визит.",
+      "remediation": {
+        "priority": "P1",
+        "effort": "S",
+        "expected_effect": "Незавершённые headers/body и POST не блокируют опрос дольше заданного таймаута; поздний ответ не перезаписывает новое состояние; повтор не влияет на новый визит.",
+        "tradeoffs": [
+          "Сохранить ограничения доступа, атомарность действий и ограниченный размер ответов."
+        ],
+        "steps": [
+          "Ограничить полную длительность запроса и корректно отменять его.",
+          "После неясного результата POST перечитывать фактический визит.",
+          "Добавить тесты зависшихheaders/body/POST и позднихответов."
+        ]
+      },
+      "source_agent": "root-stability-review",
+      "id": "ROOT-UI-001",
+      "domains": [
+        "functional"
+      ],
+      "violation_example": {
+        "file": "app/static/staff.js",
+        "line": 26,
+        "end_line": 35,
+        "source_sha256": "d0f44b6dd28a1fe77a9f6cee2e0875bb971f23b32d6cb130ec64e61d145a194d",
+        "exact_source": "  async function request(path='',options={}) {\n    const response=await fetch('/api/restaurant/portal'+path,{...options,credentials:'omit',cache:'no-store',headers:{Authorization:'Bearer '+token,...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers || {})}});\n    let result;\n    try { result=await response.json(); } catch (_) { throw new Error('Сервер временно недоступен. Повторите позже.'); }\n    if(response.status===401 || response.status===403) {\n      if (!path && response.status===401) { clearToken();stopped=true;data=null;showAccess('Персональная ссылка недействительна или доступ отключён. Попросите администратора выдать новую ссылку.'); }\n      throw new Error(typeof result.detail==='string'?result.detail:'Это действие недоступно вашему рабочему экрану.');\n    }\n    if(!response.ok)throw new Error(Array.isArray(result.detail)?result.detail.map(error=>error.msg).join('. '):result.detail || 'Действие не выполнено.');\n    return result;"
+      },
+      "evidence_hashes": {
+        "evidence/ui-faults.json": "8d1924f25b1a3bf53d8e5c621bc8bf35388d927b5e7428f106d7fbb459efedf2"
+      },
+      "evidence_grade": "A",
+      "verification": {
+        "finding_id": "ROOT-UI-001",
+        "state": "verified",
+        "method": "reproduced",
+        "evidence": [
+          "evidence/verification/state-review-ui.json"
+        ],
+        "notes": "Independent Node VM with functioning fake intervals and timeouts. New variant hangs response.json after fetch resolves; separate POST hang. Neither scheduled polling nor manual refresh creates a new request over180 simulated seconds; rejection restores. This verifies async recovery logic, not browser rendering/network timing."
+      },
+      "claim_integrity": {
+        "observation": "independently_verified",
+        "recommendation": "grounded",
+        "fix_applied": false,
+        "fix_examples": "none"
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "surface_id": "api:GET:/api/restaurant",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:GET:/api/restaurant",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "HTTP TestClient"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        },
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "api:GET:/api/restaurant",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-results.json",
+            "evidence/load-requests.csv",
+            "evidence/load-acceptance.json"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager"
+          ],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "600normal admin snapshots plus750burst snapshots and history samples; all200. Normal authentication only, not full authorization coverage."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant",
+      "domain": "authorization",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:GET:/api/restaurant",
+          "domain": "authorization",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml"
+          ],
+          "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:POST:/api/restaurant/staff",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "fixture setup at tests/test_restaurant.py:20-26"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff",
+      "domain": "authorization",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/staff/{identifier}",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:PUT:/api/restaurant/staff/{identifier}",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "HTTP TestClient"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/staff/{identifier}",
+      "domain": "authorization",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff/{identifier}/token",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:POST:/api/restaurant/staff/{identifier}/token",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "HTTP TestClient"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/staff/{identifier}/token",
+      "domain": "authorization",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:POST:/api/restaurant/tables",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "fixture setup at tests/test_restaurant.py:28-33",
+            "test_invalid_input_and_csrf_do_not_change_configuration"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables",
+      "domain": "authorization",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:POST:/api/restaurant/tables",
+          "domain": "authorization",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml"
+          ],
+          "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/tables/{identifier}",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:PUT:/api/restaurant/tables/{identifier}",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "HTTP TestClient"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:PUT:/api/restaurant/tables/{identifier}",
+      "domain": "authorization",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "api:DELETE:/api/restaurant/tables/{identifier}",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:DELETE:/api/restaurant/tables/{identifier}",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "rejection branch only;not a complete DELETE journey"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        },
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:DELETE:/api/restaurant/tables/{identifier}",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/alert-visibility.json"
+          ],
+          "notes": "Additional successful deletion of a ready empty table returns200."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:DELETE:/api/restaurant/tables/{identifier}",
+      "domain": "authorization",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables/{identifier}/actions",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:POST:/api/restaurant/tables/{identifier}/actions",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "action helper tests/test_restaurant.py:60-63"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/tables/{identifier}/actions",
+      "domain": "authorization",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:POST:/api/restaurant/alerts/{identifier}/ack",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/alert-visibility.json"
+          ],
+          "notes": "Authenticated admin acknowledgment and repeated acknowledgment both200; positive branch only."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/alerts/{identifier}/ack",
+      "domain": "authorization",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant/portal",
+      "domain": "api",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:GET:/api/restaurant/portal",
+          "domain": "api",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log",
+            "evidence/verification/state-review-alerts.json"
+          ],
+          "variants": [
+            "HTTP TestClient"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed. Additional visibility fault ROOT-ALERT-001 is independently reproduced."
+        },
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "api:GET:/api/restaurant/portal",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-results.json",
+            "evidence/load-requests.csv",
+            "evidence/load-acceptance.json"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager"
+          ],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "6600normal staff snapshots,1440independent-pool snapshots, role-history snapshots; all200. Staff tables checked for intended assignment; independent authorization testing remains separate."
+        },
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:GET:/api/restaurant/portal",
+          "domain": "api",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/alert-visibility.json"
+          ],
+          "notes": "200 newer completed tasks hide one older unresolved manager task; card remains overdue."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant/portal",
+      "domain": "authorization",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:GET:/api/restaurant/portal",
+          "domain": "authorization",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml"
+          ],
+          "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "rejection branches only;service-level positive action checks are not HTTP portal coverage"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        },
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-results.json",
+            "evidence/load-requests.csv",
+            "evidence/load-acceptance.json"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager"
+          ],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "240greet/clean actions during concurrent observation loop; all200. No synthetic stale-revision request included."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "domain": "authorization",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+          "domain": "authorization",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml"
+          ],
+          "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "domain": "api",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "api-map-evidence-auditor",
+          "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml",
+            "evidence/baseline-pytest.log"
+          ],
+          "variants": [
+            "HTTP TestClient"
+          ],
+          "notes": "Verified only listed HTTP contracts in baseline-api-map.json; uncovered variants explicitly listed."
+        },
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+          "domain": "api",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-results.json",
+            "evidence/load-requests.csv",
+            "evidence/load-acceptance.json"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager"
+          ],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "400acknowledgements during load; all200. Other employee acknowledgement denial is outside this workload."
+        }
+      ]
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "domain": "authorization",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+          "domain": "authorization",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/verification/baseline-api-map.json",
+            "evidence/baseline-junit.xml"
+          ],
+          "notes": "Only explicitly listed rejection/scope/token/CSRF cases in the API map; not an exhaustive authorization matrix."
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:seating",
+      "domain": "functional",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:seating",
+          "domain": "functional",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "3000 completed regular visits; arrival occurs at5s and not4.999s; restart and observation faults do not duplicate a visit"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:seating",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:seating",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "3000 completed regular visits; arrival occurs at5s and not4.999s; restart and observation faults do not duplicate a visit"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:deadline",
+      "domain": "functional",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:deadline",
+          "domain": "functional",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "1500 regular unconfirmed visits escalate at120s and not119.999s; acknowledged arrival still requires greeting; committed deadlines survive real process death"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:deadline",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:deadline",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "1500 regular unconfirmed visits escalate at120s and not119.999s; acknowledged arrival still requires greeting; committed deadlines survive real process death"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:deadline",
+      "domain": "performance",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "flow:restaurant:deadline",
+          "domain": "performance",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-soak-runtime.json",
+            "evidence/load-acceptance.json"
+          ],
+          "roles": [],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "60intentionally ungreeted visits escalated at120s with stored lateness max0.553s during steady soak. Not a Telegram-delivery or phone-display latency measurement; burst-time deadline lag not measured."
+        },
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "flow:restaurant:deadline",
+          "domain": "performance",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/transport-delivery.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "Persisted120s deadline with119s pre-aged fixture; real-time remaining deadline respected under slow provider."
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:departure",
+      "domain": "functional",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:departure",
+          "domain": "functional",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "3000 departures require60 seconds of fresh empty observations and a separate cleanup confirmation"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:departure",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:departure",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "3000 departures require60 seconds of fresh empty observations and a separate cleanup confirmation"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:hold",
+      "domain": "functional",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:hold",
+          "domain": "functional",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "One held old visit survives72 virtual hours,100 injected unknown/older observations,20 service reinitializations and retention"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:hold",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:hold",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "One held old visit survives72 virtual hours,100 injected unknown/older observations,20 service reinitializations and retention"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:restart",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:restart",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "28 real SIGKILL boundaries: arrival/escalation before and after commit and durable sending states; all integrity checks ok"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:restart",
+      "domain": "performance",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:restart",
+          "domain": "performance",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "28 real SIGKILL boundaries: arrival/escalation before and after commit and durable sending states; all integrity checks ok"
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:concurrency",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:concurrency",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "25 rounds of12 parallel operations: exactly one greeting accepted,10 stale revisions rejected per round; concurrent deadline tick never leaves an open escalation after greeting"
+        },
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "flow:restaurant:concurrency",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-soak-runtime.json",
+            "evidence/load-acceptance.json"
+          ],
+          "roles": [],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "Mixed observations/ticks/HTTP actions produced180visits with no duplicate active visits/logical alerts and SQLite integrity ok. Exact stale-action races and crash recovery are outside this specialist."
+        }
+      ]
+    },
+    {
+      "surface_id": "flow:restaurant:concurrency",
+      "domain": "performance",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "flow:restaurant:concurrency",
+          "domain": "performance",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "25 rounds of12 parallel operations: exactly one greeting accepted,10 stale revisions rejected per round; concurrent deadline tick never leaves an open escalation after greeting"
+        }
+      ]
+    },
+    {
+      "surface_id": "job:restaurant:retention",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "job:restaurant:retention",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "One-day retention removes eligible history, keeps active old visits/open tasks, and correctly retains ended visits with newer notifications"
+        }
+      ]
+    },
+    {
+      "surface_id": "job:restaurant:retention",
+      "domain": "operational_cost",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "job:restaurant:tick",
+      "domain": "performance",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "job:restaurant:tick",
+          "domain": "performance",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-results.json",
+            "evidence/load-soak-runtime.json"
+          ],
+          "roles": [],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "Production restaurant_work loop with synthetic pump:599ticks, maximum gap1.017s, max tick duration6.064ms; other background NVR/AI workers excluded. Forced DB locks handled by separate specialist."
+        },
+        {
+          "agent": "root-stability-review",
+          "surface_id": "job:restaurant:tick",
+          "domain": "performance",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/loop-stall.json"
+          ],
+          "notes": "Deliberate SQLite writer contention stalls shared event-loop heartbeat; normal throughput measured separately."
+        },
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "job:restaurant:tick",
+          "domain": "performance",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/transport-delivery.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "Real timer ticks remain active throughout slow fake delivery."
+        }
+      ]
+    },
+    {
+      "surface_id": "job:restaurant:tick",
+      "domain": "architecture",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "job:restaurant:tick",
+          "domain": "architecture",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/loop-stall.json"
+          ],
+          "notes": "Synchronous SQLite lock acquisition runs inside async worker."
+        },
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "job:restaurant:tick",
+          "domain": "architecture",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/transport-delivery.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "Network await in delivery does not block the separate timer worker; this does not cover SQLite writer blocking."
+        }
+      ]
+    },
+    {
+      "surface_id": "integration:restaurant:mqtt",
+      "domain": "performance",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "integration:restaurant:mqtt",
+          "domain": "performance",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/transport-mqtt.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "Normal reconnect1.05–1.07s for8cycles; parser failure has no automatic recovery."
+        }
+      ]
+    },
+    {
+      "surface_id": "integration:restaurant:mqtt",
+      "domain": "functional",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "integration:restaurant:mqtt",
+          "domain": "functional",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/transport-mqtt.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "8 broker SIGKILL/restarts passed; deeply nested JSON kills Paho receive thread."
+        }
+      ]
+    },
+    {
+      "surface_id": "integration:restaurant:camera",
+      "domain": "functional",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "integration:restaurant:camera",
+          "domain": "functional",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/transport-mqtt.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "Stationary people, detect/enabled/zone off-on, offline FPS, partial snapshots, retained stale zero,16s silence, late binding and bounded malformed payloads exercised."
+        }
+      ]
+    },
+    {
+      "surface_id": "integration:restaurant:camera",
+      "domain": "data",
+      "status": "untested",
+      "observations": []
+    },
+    {
+      "surface_id": "integration:restaurant:telegram",
+      "domain": "data",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "integration:restaurant:telegram",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "Actual process death during mocked HTTP delivery;3 retries recover to sent and final8th-attempt uncertainty becomes failed, never falsely delivered"
+        },
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "integration:restaurant:telegram",
+          "domain": "data",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/transport-delivery.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "Failed500/429/timeout sequence eventually sent; sending lease does not retry before60s and is recoverable after61s. No external messages."
+        }
+      ]
+    },
+    {
+      "surface_id": "integration:restaurant:telegram",
+      "domain": "performance",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "performance-resilience-transport",
+          "surface_id": "integration:restaurant:telegram",
+          "domain": "performance",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/transport-delivery.json"
+          ],
+          "roles": [],
+          "variants": [
+            "disposable local fixture"
+          ],
+          "notes": "Provider retry_after is ignored; global queue delays healthy manager behind retries."
+        }
+      ]
+    },
+    {
+      "surface_id": "performance:restaurant:http",
+      "domain": "performance",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "performance:restaurant:http",
+          "domain": "performance",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-results.json",
+            "evidence/load-requests.csv",
+            "evidence/load-acceptance.json",
+            "evidence/load-connections.json",
+            "evidence/load-history-roles.json"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager"
+          ],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "601.577s/7840 requests with24virtual users sharing one HTTPX pool; separate24pool120s/1440requests;50/100concurrent snapshot bursts and10000historical rows. All measured responses200; this PASS covers availability and fixture invariants, not a latency SLO. Burst100 p95=8361.266ms is a capacity warning, not a claimed acceptable UX target."
+        }
+      ]
+    },
+    {
+      "surface_id": "performance:restaurant:http",
+      "domain": "operational_cost",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "performance-resilience-engineer",
+          "surface_id": "performance:restaurant:http",
+          "domain": "operational_cost",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/load-results.json",
+            "evidence/load-connections.json"
+          ],
+          "roles": [],
+          "variants": [
+            "local-loopback",
+            "synthetic-occupancy",
+            "single-api-process"
+          ],
+          "notes": "Observed API RSS/FD/thread/CPU/DB footprint only; no financial forecast and no video/model workload. Shared-pool soak RSS73.847→77.255MB; after bursts132.448MB/41threads. This cannot size a production camera server."
+        }
+      ]
+    },
+    {
+      "surface_id": "ui:restaurant:admin",
+      "domain": "functional",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "ui:restaurant:admin",
+          "domain": "functional",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/historical-ci.json"
+          ],
+          "notes": "Historical Chromium run from2026-11-14 on identical unmodified production commit passed; no new browser soak is claimed."
+        }
+      ]
+    },
+    {
+      "surface_id": "ui:restaurant:staff",
+      "domain": "functional",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "ui:restaurant:staff",
+          "domain": "functional",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/ui-faults.json",
+            "evidence/verification/state-review-ui.json"
+          ],
+          "notes": "Synthetic VM fault injection verifies polling and mutation recovery logic; not real-browser layout/network timing."
+        }
+      ]
+    },
+    {
+      "surface_id": "architecture:restaurant:sqlite",
+      "domain": "architecture",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "architecture:restaurant:sqlite",
+          "domain": "architecture",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "Actual transaction windows killed before/after commit; atomic rollback and durability checked with28 integrity_checks"
+        },
+        {
+          "agent": "root-stability-review",
+          "surface_id": "architecture:restaurant:sqlite",
+          "domain": "architecture",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/loop-stall.json",
+            "evidence/verification/loop-stall-source-review.json"
+          ],
+          "notes": "Atomicity passes independently, but writer-wait failure isolation fails; retain both observations."
+        }
+      ]
+    },
+    {
+      "surface_id": "architecture:restaurant:sqlite",
+      "domain": "code_quality",
+      "status": "failed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "architecture:restaurant:sqlite",
+          "domain": "code_quality",
+          "status": "failed",
+          "evidence_refs": [
+            "evidence/loop-stall.json"
+          ],
+          "notes": "Blocking call in async worker is independently source-reviewed; no general maintainability score."
+        }
+      ]
+    },
+    {
+      "surface_id": "business:restaurant:handoff",
+      "domain": "business_efficiency",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "business:restaurant:handoff",
+          "domain": "business_efficiency",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/baseline-pytest.log"
+          ],
+          "notes": "Verified implemented workflow: explicit greeting and cleaning confirmations; ack is distinct; no human-time saving or automatic waiter-recognition claim."
+        }
+      ]
+    },
+    {
+      "surface_id": "blocked:restaurant:physical-camera",
+      "domain": "functional",
+      "status": "blocked",
+      "observations": [
+        {
+          "agent": "root-stability-review",
+          "surface_id": "blocked:restaurant:physical-camera",
+          "domain": "functional",
+          "status": "blocked",
+          "evidence_refs": [],
+          "notes": "No physical restaurant stream, target server, or labeled video supplied; camera/detection accuracy and production acceptance unavailable."
+        }
+      ]
+    },
+    {
+      "surface_id": "service:restaurant:staff-scope",
+      "domain": "authorization",
+      "status": "passed",
+      "observations": [
+        {
+          "agent": "data-integrity-engineer",
+          "surface_id": "service:restaurant:staff-scope",
+          "domain": "authorization",
+          "status": "passed",
+          "evidence_refs": [
+            "evidence/state-results.json",
+            "evidence/state-run.log"
+          ],
+          "roles": [
+            "admin",
+            "waiter",
+            "manager",
+            "cleaner"
+          ],
+          "variants": [
+            "disposable SQLite",
+            "synthetic observations"
+          ],
+          "notes": "Two-site service-level isolation, token rotation including stale authenticated principal, disabled token, cross-site assignment rejection and same-site manager fallback"
+        }
+      ]
+    }
+  ],
+  "metrics": {
+    "baseline_tests_passed": 211,
+    "baseline_duration_s": 23.08,
+    "load_total_requests": 10398,
+    "load_unexpected_responses": 0,
+    "soak_duration_s": 601.577,
+    "soak_requests": 7840,
+    "tables": 60,
+    "simulated_cameras": 3,
+    "virtual_clients": 24,
+    "soak_groups": {
+      "admin_read": {
+        "latency": {
+          "count": 600,
+          "p50_ms": 19.867,
+          "p95_ms": 29.802,
+          "p99_ms": 47.521,
+          "max_ms": 109.519
+        },
+        "statuses": {
+          "200": 600
+        }
+      },
+      "staff_ack": {
+        "latency": {
+          "count": 400,
+          "p50_ms": 45.4,
+          "p95_ms": 51.617,
+          "p99_ms": 56.143,
+          "max_ms": 65.667
+        },
+        "statuses": {
+          "200": 400
+        }
+      },
+      "staff_action": {
+        "latency": {
+          "count": 240,
+          "p50_ms": 47.328,
+          "p95_ms": 52.01,
+          "p99_ms": 53.616,
+          "max_ms": 58.304
+        },
+        "statuses": {
+          "200": 240
+        }
+      },
+      "staff_read": {
+        "latency": {
+          "count": 6600,
+          "p50_ms": 47.709,
+          "p95_ms": 52.823,
+          "p99_ms": 57.78,
+          "max_ms": 87.883
+        },
+        "statuses": {
+          "200": 6600
+        }
+      }
+    },
+    "independent_pools": {
+      "clients": 24,
+      "connection_pools": 24,
+      "duration_s": 120.03828871099904,
+      "requests": 1440,
+      "latency": {
+        "count": 1440,
+        "p50_ms": 559.81,
+        "p95_ms": 631.681,
+        "p99_ms": 656.131,
+        "max_ms": 679.935
+      }
+    },
+    "burst": [
+      {
+        "concurrency": 50,
+        "waves": 5,
+        "requests": 250,
+        "latency": {
+          "count": 250,
+          "p50_ms": 3508.216,
+          "p95_ms": 4160.985,
+          "p99_ms": 4192.534,
+          "max_ms": 4208.446
+        },
+        "statuses": {
+          "200": 250
+        }
+      },
+      {
+        "concurrency": 100,
+        "waves": 5,
+        "requests": 500,
+        "latency": {
+          "count": 500,
+          "p50_ms": 6248.953,
+          "p95_ms": 8361.266,
+          "p99_ms": 8685.495,
+          "max_ms": 8751.126
+        },
+        "statuses": {
+          "200": 500
+        }
+      }
+    ],
+    "deadline_lag_s": {
+      "max": 0.553,
+      "p95": 0.553
+    },
+    "soak_logic": {
+      "visits": 180,
+      "alerts": 420,
+      "alert_kinds": [
+        {
+          "kind": "arrival",
+          "count": 180
+        },
+        {
+          "kind": "cleaning",
+          "count": 120
+        },
+        {
+          "kind": "escalation",
+          "count": 120
+        }
+      ],
+      "duplicate_logical_alerts": 0,
+      "duplicate_active_visits": 0,
+      "integrity": "ok",
+      "tick_exceptions": []
+    },
+    "rss_soak_start_bytes": 73846784,
+    "rss_soak_last_sample_bytes": 77254656,
+    "after_burst_resources": {
+      "rss_bytes": 132448256,
+      "fds": 70,
+      "threads": 41,
+      "cpu_s": 156.13
+    },
+    "state_real_sigkills": 28,
+    "state_virtual_hours": 72,
+    "state_virtual_visits": 3000,
+    "concurrent_action_rounds": 25,
+    "concurrent_actions_per_round": 12,
+    "transport": {
+      "transport_cases": 17,
+      "passed_cases": 14,
+      "failed_cases": 3,
+      "broker_kill_cycles": 8,
+      "broker_recovery_min_seconds": 1.050222293000843,
+      "broker_recovery_max_seconds": 1.0719743080007902,
+      "manager_delivery_lag_seconds": 65.1254472732544,
+      "deadline_lag_seconds": 0.012246847152709961
+    },
+    "loop_stall": {
+      "writer_lock_s": 3.0001532719998067,
+      "heartbeat_target_s": 0.02,
+      "maximum_heartbeat_gap_s": 2.344724201000645,
+      "warmup_maximum_gap_s": 0.020229280000421568,
+      "heartbeat_samples": 95,
+      "database_integrity": "ok"
+    }
+  },
+  "limitations": [
+    "10 минут реальной нагрузки и72 часа ускоренного логического времени — разные проверки. Многосуточная непрерывная эксплуатация не подтверждена.",
+    "Реальная физическая камера, обработка видео, Frigate/Mosquitto контейнеры, нейросетевой инференс и целевой сервер ресторана не участвовали. Эти измерения не определяют конфигурацию сервера для видеонаблюдения.",
+    "MQTT использует настоящий локальный AMQTT брокер и производственный Paho клиент, но публикации камеры синтетические. Telegram использует HTTP mock; настоящие сообщения не отправлялись.",
+    "Основной soak:24виртуальных клиента с общимHTTPpool. Отдельная проверка:24независимыхpool/120с. Общий вычислительный хост и параллельные тесты ограничивают переносимость latency.",
+    "Проверены реальные SIGKILL процессов и восстановлениеSQLite; отключение питания, заполнение/повреждение диска, сетевое хранилище не проверялись.",
+    "Новый faulttest интерфейса выполнен в NodeVM. Успешный Chromium/Compose/DockerCI от14ноября относится к идентичному исходному коммиту и отмечен как историческое свидетельство, не как новый браузерный soak.",
+    "Покрытие endpoint означает выполненные перечисленные варианты; полная матрица всех ролей, неверных payload и браузеров не заявляется. Непроверенные пары поверхность×домен сохранены в inventory/report.json.",
+    "Исправлений продуктового кода нет. Рекомендации не применены и не проверены как исправления.",
+    "Project Sentinel CLI/официальный расчёт баллов отсутствует в установленном пакете. Артефакты собраны по evidence-contract; канонический числовой балл не рассчитывался.",
+    "Это аудит стабильности ресторанного модуля, а не новая полная security/CVE-проверка или аудит всех моделей Glazza."
+  ],
+  "source_reports": [
+    "api-map-evidence-auditor",
+    "data-integrity-engineer",
+    "performance-resilience-engineer",
+    "root-stability-review",
+    "performance-resilience-transport"
+  ]
+}

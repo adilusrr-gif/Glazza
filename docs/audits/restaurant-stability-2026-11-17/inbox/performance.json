@@ -1,0 +1,274 @@
+{
+  "schema_version": "1.0",
+  "agent": "performance-resilience-engineer",
+  "scope": {
+    "project": ".",
+    "mode": "pr",
+    "surfaces": [
+      "api:GET:/api/restaurant",
+      "api:GET:/api/restaurant/portal",
+      "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "flow:restaurant:concurrency",
+      "flow:restaurant:deadline",
+      "job:restaurant:tick",
+      "performance:restaurant:http"
+    ],
+    "environment": "Local disposable processes/databases, loopback HTTP, synthetic occupancy; frozen product commit98a22174f44097d53c12e1febb870951ff914aba"
+  },
+  "summary": {
+    "discovered": 8,
+    "tested": 8,
+    "passed": 8,
+    "failed": 0,
+    "blocked": 0
+  },
+  "discovered_surfaces": [],
+  "findings": [],
+  "coverage": [
+    {
+      "surface_id": "performance:restaurant:http",
+      "domain": "performance",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-results.json",
+        "evidence/load-requests.csv",
+        "evidence/load-acceptance.json",
+        "evidence/load-connections.json",
+        "evidence/load-history-roles.json"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager"
+      ],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "601.577s/7840 requests with24virtual users sharing one HTTPX pool; separate24pool120s/1440requests;50/100concurrent snapshot bursts and10000historical rows. All measured responses200; this PASS covers availability and fixture invariants, not a latency SLO. Burst100 p95=8361.266ms is a capacity warning, not a claimed acceptable UX target."
+    },
+    {
+      "surface_id": "performance:restaurant:http",
+      "domain": "operational_cost",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-results.json",
+        "evidence/load-connections.json"
+      ],
+      "roles": [],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "Observed API RSS/FD/thread/CPU/DB footprint only; no financial forecast and no video/model workload. Shared-pool soak RSS73.847→77.255MB; after bursts132.448MB/41threads. This cannot size a production camera server."
+    },
+    {
+      "surface_id": "flow:restaurant:deadline",
+      "domain": "performance",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-soak-runtime.json",
+        "evidence/load-acceptance.json"
+      ],
+      "roles": [],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "60intentionally ungreeted visits escalated at120s with stored lateness max0.553s during steady soak. Not a Telegram-delivery or phone-display latency measurement; burst-time deadline lag not measured."
+    },
+    {
+      "surface_id": "flow:restaurant:concurrency",
+      "domain": "data",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-soak-runtime.json",
+        "evidence/load-acceptance.json"
+      ],
+      "roles": [],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "Mixed observations/ticks/HTTP actions produced180visits with no duplicate active visits/logical alerts and SQLite integrity ok. Exact stale-action races and crash recovery are outside this specialist."
+    },
+    {
+      "surface_id": "job:restaurant:tick",
+      "domain": "performance",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-results.json",
+        "evidence/load-soak-runtime.json"
+      ],
+      "roles": [],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "Production restaurant_work loop with synthetic pump:599ticks, maximum gap1.017s, max tick duration6.064ms; other background NVR/AI workers excluded. Forced DB locks handled by separate specialist."
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-results.json",
+        "evidence/load-requests.csv",
+        "evidence/load-acceptance.json"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager"
+      ],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "600normal admin snapshots plus750burst snapshots and history samples; all200. Normal authentication only, not full authorization coverage."
+    },
+    {
+      "surface_id": "api:GET:/api/restaurant/portal",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-results.json",
+        "evidence/load-requests.csv",
+        "evidence/load-acceptance.json"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager"
+      ],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "6600normal staff snapshots,1440independent-pool snapshots, role-history snapshots; all200. Staff tables checked for intended assignment; independent authorization testing remains separate."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/tables/{identifier}/actions",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-results.json",
+        "evidence/load-requests.csv",
+        "evidence/load-acceptance.json"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager"
+      ],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "240greet/clean actions during concurrent observation loop; all200. No synthetic stale-revision request included."
+    },
+    {
+      "surface_id": "api:POST:/api/restaurant/portal/alerts/{identifier}/ack",
+      "domain": "api",
+      "status": "passed",
+      "evidence_refs": [
+        "evidence/load-results.json",
+        "evidence/load-requests.csv",
+        "evidence/load-acceptance.json"
+      ],
+      "roles": [
+        "admin",
+        "waiter",
+        "manager"
+      ],
+      "variants": [
+        "local-loopback",
+        "synthetic-occupancy",
+        "single-api-process"
+      ],
+      "notes": "400acknowledgements during load; all200. Other employee acknowledgement denial is outside this workload."
+    }
+  ],
+  "metrics": [
+    {
+      "name": "soak_duration",
+      "kind": "measured",
+      "value": 601.577,
+      "unit": "seconds",
+      "method": "monotonic elapsed wall clock around continuous polling",
+      "source": "evidence/load-results.json"
+    },
+    {
+      "name": "soak_requests",
+      "kind": "measured",
+      "value": 7840,
+      "unit": "requests",
+      "method": "CSV request records restricted to phase=soak",
+      "source": "evidence/load-requests.csv"
+    },
+    {
+      "name": "soak_staff_read_p95",
+      "kind": "measured",
+      "value": 52.823,
+      "unit": "ms",
+      "method": "linear-interpolated empirical percentile of HTTP duration",
+      "source": "evidence/load-results.json"
+    },
+    {
+      "name": "persistent_pool_read_p95",
+      "kind": "measured",
+      "value": 631.681,
+      "unit": "ms",
+      "method": "24independent connection pools, synchronized2s polling for120s",
+      "source": "evidence/load-connections.json"
+    },
+    {
+      "name": "burst_100_admin_read_p95",
+      "kind": "measured",
+      "value": 8361.266,
+      "unit": "ms",
+      "method": "5waves of100concurrent full admin snapshots",
+      "source": "evidence/load-results.json"
+    },
+    {
+      "name": "soak_escalation_stored_lateness_max",
+      "kind": "measured",
+      "value": 0.553,
+      "unit": "seconds",
+      "method": "restaurant_visits.escalated_at minus deadline_at;60visits",
+      "source": "evidence/load-soak-runtime.json"
+    }
+  ],
+  "observations": [
+    {
+      "kind": "measured_capacity_warning",
+      "title": "Full dashboard burst latency rises to8.36s p95 at100concurrent requests",
+      "evidence": [
+        "evidence/load-results.json",
+        "evidence/load-requests.csv"
+      ],
+      "details": "50concurrent p95=4160.985ms,100concurrent p95=8361.266ms; all750responses200. No throughput/latency SLO or expected100concurrent dashboard users was supplied, so this is not classified as a confirmed functional defect. No profiler was run to assign a root cause."
+    }
+  ],
+  "limitations": [
+    "Only10minutes real endurance, not24/72hour or production acceptance.",
+    "Primary soak has24virtual users sharing a connection pool; separate120s test has24independent pools. Do not equate primary FD count with24physical devices.",
+    "Shared execution host and overlapping independent test processes; no dedicated CPU guarantee or production capacity inference.",
+    "Production restaurant_work loop is used with synthetic feed.pump; NVR, video decoding, model inference, other background workers and real Telegram are excluded.",
+    "Primary load transport contains an admin cookie as well as per-employee Bearer headers; staff endpoints selectBearer, but this run is not a cookie-free authorization proof. Independent-pool follow-up uses only staff Bearer credentials.",
+    "Default debounce/120s deadline retained; deterministic occupancy cycles160s occupied/80s empty are test inputs.",
+    "Resource observations are bounded samples, not proof of absence of memory leaks. Fixture tick instrumentation also retains599small measurement records.",
+    "Deadline latency is persisted timestamp lag during steady soak, not end-to-end phone/Telegram delivery, and not deadline lag during high-concurrency bursts.",
+    "History rows were directly inserted resolved synthetic alerts. This measures reading latency only; correct selection/prioritization of unresolved tasks is checked independently by root.",
+    "No financial savings or cost forecast claimed. Latency PASS is not asserted because no product SLO was supplied."
+  ]
+}

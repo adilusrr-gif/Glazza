@@ -1,0 +1,218 @@
+{
+  "transport": "httpx.MockTransport only; no external requests",
+  "checks": [
+    {
+      "case": "429_500_timeout_then_success",
+      "status": "passed",
+      "attempts": [
+        200
+      ],
+      "final_state": "sent"
+    },
+    {
+      "case": "sending_lease_recovery",
+      "status": "passed",
+      "eligible_after_seconds": 61
+    },
+    {
+      "case": "provider_retry_after_respected",
+      "status": "failed",
+      "provider_retry_after_seconds": 3600,
+      "attempt_elapsed_virtual_seconds": [
+        0.0,
+        10.0,
+        30.0,
+        70.0,
+        150.0,
+        310.0,
+        610.0,
+        910.0
+      ],
+      "final_state": "failed",
+      "attempts_after_provider_window": 0,
+      "expected": "Honor provider retry_after; keep task retryable through the declared temporary limit window",
+      "clock": "virtual; HTTP outcomes mocked"
+    },
+    {
+      "case": "slow_provider_timer_isolation",
+      "status": "passed",
+      "measured_tick_deadline_lag_seconds": 0.007899284362792969,
+      "tick_count": 67,
+      "max_tick_gap_seconds": 1.0053331851959229,
+      "clock": "real elapsed; visits seeded119seconds before start to exercise120second deadline"
+    },
+    {
+      "case": "healthy_manager_queue_delay",
+      "status": "failed",
+      "waiter_alerts_before_escalation": 10,
+      "slow_waiter_provider_seconds": 2,
+      "waiter_attempts_before_first_manager": 30,
+      "manager_provider": "immediate HTTP200",
+      "manager_first_request_elapsed_seconds": 66.11706001200037,
+      "manager_delay_after_in_app_escalation_seconds": 65.10916066169739,
+      "provider_calls": [
+        {
+          "role": "waiter",
+          "elapsed_seconds": 0.006590970999241108
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 2.009802516000491
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 4.013076627999908
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 6.016102042000057
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 8.018913596999482
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 10.022007616000337
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 12.025107123999987
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 14.02839680499892
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 16.031911869000396
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 18.03493144499953
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 22.039691955000308
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 24.04306697500033
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 26.046012349999728
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 28.049439610000263
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 30.052148946999296
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 32.05590094699983
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 34.060008688999005
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 36.06436370299889
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 38.06856693500049
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 40.073335375998795
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 44.080789218000064
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 46.08536543700029
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 48.088128969000536
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 50.09147173999918
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 52.09498775599968
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 54.09822634000011
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 56.10131246399942
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 58.10456450399943
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 60.107765016000485
+        },
+        {
+          "role": "waiter",
+          "elapsed_seconds": 62.11104756500026
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.11706001200037
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.1183950249997
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.11937220899927
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.12025166899912
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.12108486000034
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.12196758499886
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.12278158799927
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.12359369799924
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.1244060379995
+        },
+        {
+          "role": "manager",
+          "elapsed_seconds": 66.12525667499904
+        }
+      ],
+      "expected": "A healthy manager destination should not wait behind repeated failures for a different recipient"
+    }
+  ]
+}
