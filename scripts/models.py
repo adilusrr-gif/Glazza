@@ -4,11 +4,13 @@ import argparse
 import hashlib
 import json
 import os
+import pickle
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import urllib.request
+import zipfile
 
 COMMIT = 'c41067f07d252efcda18008bea367886070c33b0'
 FACE_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
@@ -43,32 +45,102 @@ def download_face(root):
         temporary.unlink(missing_ok=True)
 
 
-def prepare_vadclip(root, checkpoint):
+def check_vadclip_checkpoint(path):
+    # Catch expired provider sign-in pages, feature archives and truncated downloads
+    # before touching an installed model. Tensor shapes are checked by the analyzer.
+    if not path.is_file():
+        raise ValueError('Supply the authors’ UCF-Crime checkpoint; see docs/MODELS.md')
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+        if any(name.endswith('/data.pkl') for name in names) and any('/data/' in name for name in names):
+            return
+    else:
+        with path.open('rb') as stream:
+            # The legacy torch.save header contains a pickled fixed magic number.
+            # Encode the known integer locally; never unpickle input here.
+            header = stream.read(48)
+            if any(header.startswith(pickle.dumps(0x1950A86A20F9469CFC6C, protocol=p))
+                   for p in range(pickle.HIGHEST_PROTOCOL + 1)):
+                return
+    raise ValueError('Expected a PyTorch checkpoint, not a web page, feature archive or partial download')
+
+
+def prepare_vadclip(root, checkpoint, expected_sha256=None, source_repo=None):
+    source = Path(checkpoint).resolve()
+    check_vadclip_checkpoint(source)
+    if expected_sha256 and digest(source) != expected_sha256.lower():
+        raise ValueError('Supplied checkpoint differs from the expected SHA-256')
+    # Use a fresh checkout when first provisioning. With --source-repo this also
+    # works on an offline target. Legacy installed checkouts are reused.
     target = root / 'vadclip'
     if not target.exists():
-        subprocess.run(['git', 'clone', 'https://github.com/nwpu-zxr/VadCLIP.git', str(target)], check=True)
+        with tempfile.TemporaryDirectory(prefix='.vadclip-src-', dir=root) as temporary:
+            checkout = Path(temporary) / 'vadclip'
+            repo = str(Path(source_repo).resolve()) if source_repo else 'https://github.com/nwpu-zxr/VadCLIP.git'
+            subprocess.run(['git', 'clone', '--no-local', '--', repo, str(checkout)], check=True)
+            subprocess.run(['git', '-C', str(checkout), 'checkout', '--detach', COMMIT], check=True)
+            try:
+                checkout.rename(target)
+            except OSError:
+                if not (target / '.git').is_dir():
+                    raise
     subprocess.run(['git', '-C', str(target), 'checkout', '--detach', COMMIT], check=True)
     patches = {
         'src/utils/layers.py': [(".to('cuda')", '.to(self.sigma.device)')],
-        'src/clip/clip.py': [('from pkg_resources import packaging', 'import packaging')],
+        'src/clip/clip.py': [('from pkg_resources import packaging', 'import packaging.version')],
     }
-    for relative, edits in patches.items():
-        path = target / relative
-        content = subprocess.check_output(['git', '-C', str(target), 'show', COMMIT + ':' + relative], text=True)
-        for old, new in edits:
-            if old not in content:
-                raise RuntimeError(f'Upstream patch mismatch: {relative}')
-            content = content.replace(old, new)
-        path.write_text(content)
-    files = {str(p.relative_to(target)): digest(p) for p in (target / 'src').rglob('*') if p.is_file() and '__pycache__' not in str(p)}
-    (target / 'glazza-source.json').write_text(json.dumps({'upstream_commit': COMMIT, 'patches': patches, 'files': files}, indent=2))
-    source = Path(checkpoint).resolve()
+    # Derive the manifest only from tracked, pinned source. Previously a second
+    # install could bless unrelated local files in src as if they were upstream.
+    tracked = subprocess.check_output(
+        ['git', '-C', str(target), 'ls-tree', '-r', '--name-only', COMMIT, 'src'], text=True
+    ).splitlines()
+    files = {}
+    with tempfile.TemporaryDirectory(prefix='.vadclip-patch-', dir=root) as temporary:
+        staged = Path(temporary) / 'file'
+        for relative in tracked:
+            original = subprocess.check_output(['git', '-C', str(target), 'show', COMMIT + ':' + relative])
+            content = original
+            for old, new in patches.get(relative, []):
+                if old.encode() not in content:
+                    raise RuntimeError(f'Upstream patch mismatch: {relative}')
+                content = content.replace(old.encode(), new.encode())
+            expected = hashlib.sha256(content).hexdigest()
+            path = target / relative
+            if not path.is_file() or digest(path) != expected:
+                staged.write_bytes(content)
+                staged.replace(path)
+            files[relative] = expected
+        extra = [path for path in (target / 'src').rglob('*') if path.is_file()
+                 and '__pycache__' not in path.parts and path.relative_to(target).as_posix() not in files]
+        if extra:
+            raise ValueError('Unexpected files in installed VadCLIP src; move them out before reinstalling')
+        staged.write_text(json.dumps({'upstream_commit': COMMIT, 'patches': patches, 'files': files}, indent=2))
+        staged.replace(target / 'glazza-source.json')
     destination = root / 'vadclip_ucf.pth'
-    if not source.is_file():
-        raise RuntimeError('Download the official UCF-Crime checkpoint first; see docs/MODELS.md')
-    if source != destination.resolve():
-        shutil.copyfile(source, destination)
-    register(destination, f'https://github.com/nwpu-zxr/VadCLIP/tree/{COMMIT} (official UCF-Crime checkpoint supplied by operator)')
+    with tempfile.TemporaryDirectory(prefix='.vadclip-weights-', dir=root) as temporary:
+        staging = Path(temporary) / destination.name
+        # Even when supplied from the model directory, validate the staged bytes
+        # before publishing. Cross-device or interrupted copies cannot truncate a model.
+        shutil.copyfile(source, staging)
+        check_vadclip_checkpoint(staging)
+        actual = digest(staging)
+        if expected_sha256 and actual != expected_sha256.lower():
+            raise ValueError('Copied checkpoint differs from the expected SHA-256')
+        # Publish the manifest only after its immutable blob is fully present.
+        # Readers that started during an update keep the previous file.
+        weights = root / 'vadclip-weights'
+        weights.mkdir(exist_ok=True)
+        staging.replace(weights / (actual + '.pth'))
+        manifest = staging.with_suffix('.pth.json')
+        manifest.write_text(json.dumps({
+            'sha256': actual,
+            'size': (weights / (actual + '.pth')).stat().st_size,
+            'layout': 'sha256',
+            'source': f'https://github.com/nwpu-zxr/VadCLIP/tree/{COMMIT} (operator-supplied UCF-Crime checkpoint)',
+        }, indent=2))
+        manifest.replace(root / manifest.name)
+    print(f'Registered {destination.name}: {actual}')
 
 
 def download_fight(root):
@@ -125,7 +197,11 @@ def main():
     parser.add_argument('action', choices=['face', 'fight', 'identity', 'vadclip'])
     parser.add_argument('--directory', default='models')
     parser.add_argument('--checkpoint', help='Official UCF-Crime .pth file, obtained from upstream README')
+    parser.add_argument('--sha256', help='Expected SHA-256 for this exact locally supplied checkpoint')
+    parser.add_argument('--source-repo', help='Offline Git checkout of VadCLIP containing the pinned commit')
     args = parser.parse_args()
+    if (args.sha256 or args.source_repo) and args.action != 'vadclip':
+        parser.error('--sha256 and --source-repo are only available for vadclip')
     root = Path(args.directory).resolve()
     root.mkdir(parents=True, exist_ok=True)
     if args.action == 'face':
@@ -137,7 +213,10 @@ def main():
     else:
         if not args.checkpoint:
             parser.error('--checkpoint is required for vadclip')
-        prepare_vadclip(root, args.checkpoint)
+        try:
+            prepare_vadclip(root, args.checkpoint, args.sha256, args.source_repo)
+        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+            parser.exit(1, f'Installation failed: {error}\n')
 
 
 if __name__ == '__main__':

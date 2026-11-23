@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .admission import register as register_admission
+from .retail import register as register_retail
 from .restaurant import register as register_restaurant
 from .platform import register as register_platform, check_site, modules_for
 from .config import Settings
@@ -105,6 +106,7 @@ def create_app(settings=None, background=True):
 
     register_admission(app, store, engine, authenticated, writable)
     register_platform(app, store, engine, authenticated, writable)
+    register_retail(app, store, authenticated, writable)
     register_restaurant(app, store, engine, authenticated, writable)
 
     @app.get('/healthz')
@@ -150,8 +152,15 @@ def create_app(settings=None, background=True):
         scope = ' AND site_id=?' if site_id else ''
         args = (site_id,) if site_id else ()
         counts = {r['kind']: r['n'] for r in store.rows('SELECT kind,count(*) AS n FROM events WHERE started>?' + scope + ' GROUP BY kind', (time.time()-86400,*args))}
+        routes = store.rows("""SELECT r.camera,r.state FROM retail_routes r
+            JOIN cameras c ON c.id=r.camera JOIN sites s ON s.id=c.site_id
+            WHERE s.profile='retail' AND c.site_id=? ORDER BY r.camera""", (site_id,)) if site_id else []
+        route_cameras = [r['camera'] for r in routes if r['state'] == 'active']
         return {'mode':mode,'site_id':site_id,'cameras':len(store.cameras(site_id=site_id)),'counts':counts,
+                'retail_routes':{'camera_ids':route_cameras,'active':len(route_cameras),
+                                'invalidated':len(routes) - len(route_cameras)},
                 'pending_fights':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='fight'"+scope,args)[0]['n'],
+                'pending_thefts':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='theft'"+scope,args)[0]['n'],
                 'pending':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind!='person'"+scope,args)[0]['n'],
                 'health':engine.health_snapshot(),'jobs':store.rows('SELECT state,count(*) AS n FROM jobs WHERE 1=1'+scope+' GROUP BY state',args),
                 'retention_days':settings.retention_days}
@@ -263,11 +272,19 @@ def create_app(settings=None, background=True):
     @app.patch('/api/events/{event_id}')
     def review(event_id: str, body: Review, user=Depends(authenticated)):
         with store.connect() as db:
-            changed = db.execute('UPDATE events SET status=?,note=? WHERE id=?', (body.status, body.note, event_id)).rowcount
-            if not changed:
+            db.execute('BEGIN IMMEDIATE')
+            current = db.execute('SELECT status,note FROM events WHERE id=?', (event_id,)).fetchone()
+            if not current:
                 raise HTTPException(404, 'Событие не найдено')
+            if (body.status, body.note) == (current['status'], current['note']):
+                return {'ok': True}
+            if ((body.expected_status is not None and current['status'] != body.expected_status)
+                    or (body.expected_note is not None and current['note'] != body.expected_note)):
+                raise HTTPException(409, 'Другой оператор изменил карточку. Откройте её снова, чтобы увидеть решение.')
+            db.execute('UPDATE events SET status=?,note=? WHERE id=?', (body.status, body.note, event_id))
             db.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)',
-                       (time.time(), user['username'], 'event.review', event_id, json.dumps(body.model_dump(), ensure_ascii=False)))
+                       (time.time(), user['username'], 'event.review', event_id,
+                        json.dumps({'status': body.status, 'note': body.note}, ensure_ascii=False)))
         return {'ok': True}
 
     @app.get('/api/events/{event_id}')
@@ -374,27 +391,44 @@ def create_app(settings=None, background=True):
         if not rows:
             raise HTTPException(404)
         event = rows[0]
-        if event['source'] == 'analysis':
+        archive_path = None
+        if event['source'] in ('analysis', 'retail_route'):
             details = json.loads(event['details'])
-            if kind == 'clip':
-                return job_video(details['job_id'], user)
-            origin = store.rows('SELECT * FROM events WHERE id=?', (details.get('origin_event'),))
-            if not origin:
-                raise HTTPException(404)
-            event = origin[0]
-        if event['source'] != 'frigate':
-            raise HTTPException(404, 'В демонстрации запись не создаётся')
-        suffix = 'snapshot.jpg' if kind == 'snapshot' else 'clip.mp4'
+            if event['source'] == 'analysis' and kind == 'clip':
+                try:
+                    return job_video(details['job_id'], user)
+                except HTTPException as error:
+                    if error.status_code != 404:
+                        raise
+                windows = store.rows('''SELECT clip_start,clip_end FROM jobs
+                    WHERE id=? AND camera=? AND site_id=? AND clip_start IS NOT NULL AND clip_end > clip_start''',
+                    (details['job_id'], event['camera'], event['site_id']))
+                if windows:
+                    window = windows[0]
+                    archive_path = f"/api/{event['camera']}/start/{window['clip_start']}/end/{window['clip_end']}/clip.mp4"
+            if archive_path is None:
+                origin = store.rows("SELECT * FROM events WHERE id=? AND source='frigate' AND camera=? AND site_id=?",
+                                    (details.get('origin_event'), event['camera'], event['site_id']))
+                if not origin:
+                    raise HTTPException(404, 'Запись события недоступна')
+                event = origin[0]
+        if archive_path is None:
+            if event['source'] != 'frigate':
+                raise HTTPException(404, 'В демонстрации запись не создаётся')
+            suffix = 'snapshot.jpg' if kind == 'snapshot' else 'clip.mp4'
+            archive_path = f"/api/events/{event['source_id']}/{suffix}"
         headers = {}
         if request.headers.get('range'):
             headers['Range'] = request.headers['range']
-        upstream_request = engine.client.build_request('GET', settings.frigate_url + f"/api/events/{event['source_id']}/{suffix}", headers=headers, timeout=60)
+        upstream_request = engine.client.build_request('GET', settings.frigate_url + archive_path, headers=headers, timeout=60)
         try:
             upstream = await engine.client.send(upstream_request, stream=True)
         except httpx.HTTPError:
             raise HTTPException(503, 'Архив недоступен')
         if upstream.status_code not in (200, 206):
             await upstream.aclose()
+            if upstream.status_code >= 500:
+                raise HTTPException(503, 'Архив временно недоступен')
             raise HTTPException(404, 'Запись ещё не готова или срок хранения истёк')
         async def chunks():
             try:

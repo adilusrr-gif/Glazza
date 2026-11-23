@@ -1,5 +1,6 @@
 """Durable ingestion and analysis queue. No simulated detections in live mode."""
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -9,12 +10,13 @@ import time
 import uuid
 
 import httpx
-from . import admission
+from . import admission, retail
 from .restaurant import RestaurantService
 from .restaurant_feed import RestaurantFeed
-from .platform import camera_enabled, modules_for, camera_site
+from .platform import modules_for, camera_site
 
 log = logging.getLogger('glazza.engine')
+ACTION_MODELS = {'theft': {'vadclip'}, 'fight': {'fight', 'vadclip'}, 'face': {'face'}}
 SAFE_ID = re.compile(r'^[a-zA-Z0-9_.-]{1,120}$')
 
 
@@ -22,10 +24,13 @@ class Engine:
     def __init__(self, store, settings):
         self.store, self.settings = store, settings
         admission.initialize(store)
+        retail.initialize(store)
         self.restaurant = RestaurantService(store, settings)
         self.restaurant_feed = RestaurantFeed(settings)
         self.health = {'frigate': 'starting', 'last_sync': None, 'error': None, 'analyzer': {'state': 'unavailable', 'models': []}}
-        self.health['fight_monitor'] = {'state': 'waiting', 'busy_cameras': [], 'skipped_windows': 0}
+        for module in ('fight', 'theft'):
+            self.health[module + '_monitor'] = {'state': 'waiting', 'camera_ids': [], 'busy_cameras': [],
+                'skipped_windows': 0, 'window_seconds': 12, 'stride_seconds': 6, 'recording_delay_seconds': 20}
         # Service-to-service traffic must not leave the Docker network via ambient proxies.
         self.client = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
         self.tasks = []
@@ -144,7 +149,8 @@ class Engine:
                 continue
             started = float(event['start_time'])
             ended = event.get('end_time')
-            score = event.get('data', {}).get('top_score', event.get('top_score'))
+            data = event.get('data')
+            score = data.get('top_score', event.get('top_score')) if isinstance(data, dict) else event.get('top_score')
             entered = event.get('zones', event.get('entered_zones', [])) or []
             previous = self.store.rows("SELECT site_id FROM events WHERE source='frigate' AND source_id=? ORDER BY started LIMIT 1", (source_id,))
             site_id = previous[0]['site_id'] if previous else camera['site_id']
@@ -152,6 +158,7 @@ class Engine:
             kind = 'intrusion' if restricted.intersection(entered) and 'intrusion' in modules_for(self.store,site_id) else 'person'
             event_id = self.store.event(source='frigate', source_id=source_id, camera=camera['id'], kind=kind,
                                        score=score, started=started, ended=ended, details={'zones': entered, 'has_clip': bool(event.get('has_clip')), 'has_snapshot': bool(event.get('has_snapshot'))}, site_id=site_id)
+            retail.observe(self.store, camera, event, event_id, site_id)
             if ended is not None:
                 self.store.execute("UPDATE events SET ended=? WHERE source='frigate' AND source_id=?", (ended,source_id))
             admission.ingest(self.store, event_id, source_id, camera['id'], entered, started, site_id=site_id)
@@ -184,7 +191,8 @@ class Engine:
         after = float(cursor[0]['value']) if cursor else time.time() - 3600
         until = time.time()
         async def window(start, end, depth=0):
-            response = await self.client.get(self.settings.frigate_url + '/api/events', params={'after': start, 'before': end, 'limit': 250})
+            response = await self.client.get(self.settings.frigate_url + '/api/events',
+                                             params={'after': start, 'before': end, 'limit': 250, 'include_thumbnails': 0})
             response.raise_for_status()
             events = response.json()
             if len(events) >= 250:
@@ -223,11 +231,12 @@ class Engine:
                     self.health['analyzer'] = response.json()
                 except Exception:
                     self.health['analyzer'] = {'state': 'unavailable', 'models': []}
-                try:
-                    self.schedule_fights()
-                except Exception as exc:
-                    self.health['fight_monitor']['state'] = 'error'
-                    log.warning('Fight scheduling failed: %s', type(exc).__name__)
+                for module, schedule in [('fight', self.schedule_fights), ('theft', self.schedule_theft)]:
+                    try:
+                        schedule()
+                    except Exception as exc:
+                        self.health[module + '_monitor']['state'] = 'error'
+                        log.warning('%s scheduling failed: %s', module, type(exc).__name__)
             try:
                 self.cleanup()
                 self.health['maintenance'] = {'state': 'ok', 'error': None}
@@ -237,50 +246,69 @@ class Engine:
             await asyncio.sleep(self.settings.poll_seconds)
 
     def schedule_fights(self, now=None):
-        """Overlapping 12s recordings, every 6s, with 20s allowance for NVR flush.
+        self.schedule_windows('fight', now)
 
-        Bounded backlog, durable per-camera cursor, independent of tracked-object end.
-        Only requested cameras and time spans containing a detected person are eligible.
-        """
-        health = self.health['fight_monitor']
-        ready = {m['id'] for m in self.health['analyzer'].get('models', []) if m.get('state') == 'ready'}
-        if self.settings.demo or not ({'fight', 'vadclip'} & ready):
-            health.update(state='model_missing', busy_cameras=[])
+    def schedule_theft(self, now=None):
+        self.schedule_windows('theft', now)
+
+    def schedule_windows(self, module, now):
+        """Analyze one scene per camera/window, even if multiple people are present."""
+        health = self.health[module + '_monitor']
+        retail_only = " AND s.profile='retail'" if module == 'theft' else ''
+        cameras = self.store.rows("""SELECT c.id,c.site_id FROM cameras c JOIN sites s ON s.id=c.site_id
+            WHERE c.analyze=1 AND EXISTS(SELECT 1 FROM json_each(s.modules) WHERE value=?)""" + retail_only +
+            " ORDER BY c.id", (module,))
+        health.update(camera_ids=[c['id'] for c in cameras], busy_cameras=[])
+        analyzer = self.health['analyzer']
+        ready = {m['id'] for m in analyzer.get('models', []) if m.get('state') == 'ready'}
+        if self.settings.demo or analyzer.get('state') != 'ready' or not ACTION_MODELS[module] & ready:
+            health['state'] = 'model_missing'
             return
         if self.health['frigate'] != 'online':
-            health.update(state='nvr_offline', busy_cameras=[])
+            health['state'] = 'nvr_offline'
             return
         now = time.time() if now is None else now
-        latest = int((now - 20) // 6) * 6
+        stride = health['stride_seconds']
+        latest = int((now - health['recording_delay_seconds']) // stride) * stride
         busy = []
-        cameras = [c for c in self.store.cameras() if c['analyze'] and camera_enabled(self.store,c['id'],'fight')]
         for camera in cameras:
-            key = 'fight_cursor:' + camera['id']
+            key = module + '_cursor:' + camera['id']
+            if module == 'theft':
+                key += ':' + camera['site_id']
             cursor = self.store.rows('SELECT value FROM meta WHERE key=?', (key,))
-            previous = float(cursor[0]['value']) if cursor else latest - 6
+            previous = float(cursor[0]['value']) if cursor else latest - stride
             if previous >= latest:
                 continue
-            pending = self.store.rows("SELECT COUNT(*) AS n FROM jobs WHERE state IN ('queued','running') AND camera=? AND clip_start IS NOT NULL", (camera['id'],))[0]['n']
-            total = self.store.rows("SELECT COUNT(*) AS n FROM jobs WHERE state IN ('queued','running')")[0]['n']
-            if pending >= 2 or total >= 100:
+            pending = self.store.rows("""SELECT count(*) AS n FROM jobs WHERE state IN ('queued','running')
+                AND camera=? AND site_id=? AND clip_start IS NOT NULL AND COALESCE(rolling_module,'fight')=?""",
+                (camera['id'], camera['site_id'], module))[0]['n']
+            if pending >= 2:
                 busy.append(camera['id'])
                 continue
+            skipped = 0
             if latest - previous > 120:
-                skipped = int((latest - previous) // 6) - 1
-                health['skipped_windows'] += skipped
-                self.store.audit('system', 'fight.coverage_gap', camera['id'], f'{skipped} windows skipped after backlog/outage')
-                previous = latest - 6
-            end, start = previous + 6, previous - 6
-            people = self.store.rows("SELECT id FROM events WHERE source='frigate' AND camera=? AND started < ? AND (ended IS NULL OR ended > ?) LIMIT 1", (camera['id'], end, start))
+                skipped = int((latest - previous) // stride) - 1
+                previous = latest - stride
+            end = previous + stride
+            start = end - health['window_seconds']
+            people = self.store.rows("""SELECT 1 FROM events WHERE source='frigate' AND camera=? AND site_id=?
+                AND started < ? AND (ended IS NULL OR ended > ?) LIMIT 1""", (camera['id'], camera['site_id'], end, start))
             if people:
-                job_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f'glazza:fight:{camera["id"]}:{end}'))
-                if not self.store.enqueue(id=job_id,camera=camera['id'],site_id=camera['site_id'],clip_start=start,clip_end=end,now=now):
+                identity = f'glazza:{module}:{camera["id"]}:{end}'
+                if module == 'theft':
+                    identity += ':' + camera['site_id']
+                job_id = str(uuid.uuid5(uuid.NAMESPACE_URL, identity))
+                if not self.store.enqueue(id=job_id, camera=camera['id'], site_id=camera['site_id'], rolling_module=module,
+                                          clip_start=start, clip_end=end, now=now):
                     busy.append(camera['id'])
                     continue
             with self.store.connect() as db:
+                if skipped:
+                    db.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)',
+                               (now, 'system', module + '.coverage_gap', camera['id'], f'{skipped} windows skipped after backlog/outage'))
                 db.execute('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, str(end)))
-        health.update(state='backlog' if busy else 'monitoring' if cameras else 'no_cameras', busy_cameras=busy,
-                      window_seconds=12, stride_seconds=6, recording_delay_seconds=20)
+            health['skipped_windows'] += skipped
+        health.update(state='backlog' if busy else 'monitoring' if cameras else 'no_cameras', busy_cameras=busy)
 
     def cleanup(self):
         now = time.time()
@@ -322,56 +350,140 @@ class Engine:
     def apply_result(self, job, result):
         if not isinstance(result.get('detections'), list):
             raise ValueError('Invalid analyzer response')
-        # One card per kind/clip. Keep the strongest interval and expose its timestamps.
-        by_kind = {}
+        modules = self.job_modules(job)
+        theft_status = result.get('theft', {}).get('status')
+        partial_theft = theft_status in ('insufficient_samples', 'incomplete_coverage') and 'theft' not in result.get('checked', [])
+        if modules == {'theft'} and 'theft' not in result.get('checked', []) and not partial_theft:
+            raise ValueError('Theft was not evaluated')
+        site_id = job.get('site_id') or camera_site(self.store, job['camera'])
+        rolling = job.get('clip_start') is not None
+        origin = self.store.rows('SELECT started,ended FROM events WHERE id=?', (job.get('event_id'),))
+        if job.get('event_id') and not origin:
+            raise ValueError('Capture provenance is unavailable')
+        if rolling:
+            base, duration = job['clip_start'], job['clip_end'] - job['clip_start']
+        elif origin:
+            base = origin[0]['started']
+            duration = (origin[0]['ended'] or base) - base
+        else:
+            # An upload has no trustworthy recording time and never participates in camera deduplication.
+            base, duration = job['created'], 0
+        media_duration = result.get('duration_seconds', duration)
+        if not isinstance(media_duration, (int, float)) or not math.isfinite(media_duration) or media_duration < 0:
+            raise ValueError('Invalid video duration')
+        if modules == {'theft'} and (not media_duration or not result.get('duration_seconds')):
+            raise ValueError('Missing theft analysis duration')
+
+        if rolling and modules == {'theft'} and abs(duration - media_duration) > 1:
+            # An incomplete Frigate export cannot anchor a model timestamp to this camera window.
+            result['checked'] = [kind for kind in result.get('checked', []) if kind != 'theft']
+            result.setdefault('theft', {})['status'] = 'incomplete_recording'
+            self.fail_job(job, 'Длительность фрагмента Frigate отличается от запрошенного интервала.', result)
+            return
+
+        detections = []
+        strongest_fight = None
         for detection in result['detections']:
-            if detection.get('kind') not in by_kind or detection['score'] > by_kind[detection['kind']]['score']:
-                by_kind[detection['kind']] = detection
-        for detection in by_kind.values():
-            if detection.get('kind') not in ('fight', 'theft') or detection['kind'] not in modules_for(self.store,job.get('site_id') or camera_site(self.store,job['camera'])):
+            kind = detection.get('kind')
+            if kind not in modules or kind not in ('fight', 'theft'):
                 continue
-            start = job.get('clip_start')
-            origin = self.store.rows('SELECT started,ended FROM events WHERE id=?', (job.get('event_id'),))
-            if start is None and job.get('event_id') and not origin:
-                raise ValueError('Capture provenance is unavailable')
-            if start is not None:
-                base, duration = start, job['clip_end'] - start
-            elif origin:
-                base = origin[0]['started']
-                duration = (origin[0]['ended'] or base) - base
+            if 'checked' in result and kind not in result['checked']:
+                if kind != 'theft' or theft_status != 'incomplete_coverage':
+                    raise ValueError('Detection from an unchecked module')
+                # A valid local interval can still warrant review when other footage is missing.
+            score = detection['score']
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1:
+                raise ValueError('Invalid detection score')
+            if kind == 'fight':
+                if strongest_fight is None or score > strongest_fight['score']:
+                    strongest_fight = detection
             else:
-                # Uploaded recordings have no trustworthy capture timestamp.
-                base, duration = job['created'], 0
-            started = base + detection.get('start_seconds', 0)
-            ended = base + detection.get('end_seconds', max(duration, detection.get('start_seconds', 0)))
-            # Overlapping recording windows should not flood the operator with the same signal.
-            if start is not None:
-                duplicate = self.store.rows("""SELECT id FROM events WHERE source='analysis' AND camera=? AND site_id=? AND kind=?
-                    AND json_extract(details,'$.rolling')=1 AND started < ? AND ended > ? LIMIT 1""",
-                    (job['camera'],job.get('site_id') or camera_site(self.store,job['camera']),detection['kind'],ended,started))
-                if duplicate:
-                    result.setdefault('deduplicated', []).append({'kind':detection['kind'],'event_id':duplicate[0]['id'],
-                                                                 'started':started,'ended':ended})
-                    continue
-            self.store.event(source='analysis', source_id=job['id'] + ':' + detection['kind'], camera=job['camera'],
-                             kind=detection['kind'], score=detection['score'], started=started, ended=ended,
-                             details={'job_id': job['id'], 'origin_event': job.get('event_id'), 'model': detection.get('model', result.get('model')), 'label': detection.get('label'),
-                                      'start_seconds': detection.get('start_seconds'), 'end_seconds': detection.get('end_seconds'),
-                                      'rolling': start is not None, 'review_required': True}, site_id=job.get('site_id'))
-        self.store.execute("UPDATE jobs SET state='succeeded',result=?,error=NULL,updated=? WHERE id=?", (json.dumps(result, ensure_ascii=False), time.time(), job['id']))
+                # A clip may contain distinct, non-overlapping retail episodes.
+                start, end = detection.get('start_seconds'), detection.get('end_seconds')
+                if (not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                            for v in (start, end)) or not 0 <= start < end <= media_duration + 0.001):
+                    raise ValueError('Invalid theft interval')
+                detections.append(detection)
+        detections.sort(key=lambda item: item['start_seconds'])
+        if strongest_fight:
+            detections.append(strongest_fight)
+
+        # Check overlaps and commit cards and job result in one write transaction.
+        # Competing workers and interrupted retries cannot create partial or duplicate reviews.
+        with self.store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            saved = db.execute('SELECT state FROM jobs WHERE id=?', (job['id'],)).fetchone()
+            if not saved:
+                raise ValueError('Missing analysis job')
+            if saved['state'] in ('succeeded', 'failed'):
+                return
+            for index, detection in enumerate(detections):
+                kind = detection['kind']
+                offset = detection.get('start_seconds', 0)
+                started = base + offset
+                ended = base + detection.get('end_seconds', max(duration, offset))
+                source_id = job['id'] + ':' + kind
+                if kind == 'theft' and index:
+                    source_id += ':' + str(index)
+                if (kind == 'theft' and (rolling or origin)) or (kind == 'fight' and rolling):
+                    duplicate = self.overlapping_signal(db, job['camera'], site_id, kind, started, ended)
+                    if duplicate:
+                        if kind == 'theft':
+                            # Extend only the deduplication range. The original evidence clip,
+                            # timestamps and any existing operator decision remain intact.
+                            db.execute("""UPDATE events SET details=json_set(details,'$.seen_since',?,'$.seen_until',?)
+                                WHERE id=?""", (min(duplicate['first'], started), max(duplicate['last'], ended), duplicate['id']))
+                        result.setdefault('deduplicated', []).append({'kind': kind, 'event_id': duplicate['id'],
+                                                                      'started': started, 'ended': ended})
+                        continue
+                self.store.event(source='analysis', source_id=source_id, camera=job['camera'], kind=kind,
+                    score=detection['score'], started=started, ended=ended, site_id=site_id, connection=db,
+                    details={'job_id': job['id'], 'origin_event': job.get('event_id'), 'model': detection.get('model', result.get('model')),
+                        'label': detection.get('label'), 'start_seconds': detection.get('start_seconds'),
+                        'end_seconds': detection.get('end_seconds'), 'rolling': rolling, 'review_required': True})
+            if partial_theft and modules == {'theft'}:
+                self.fail_job(job, 'Недостаточно видеокадров для полной проверки возможной кражи.', result, db)
+            else:
+                db.execute("UPDATE jobs SET state='succeeded',result=?,error=NULL,updated=? WHERE id=?",
+                           (json.dumps(result, ensure_ascii=False, allow_nan=False), time.time(), job['id']))
+
+    def fail_job(self, job, message, result=None, connection=None):
+        with (contextlib.nullcontext(connection) if connection is not None else self.store.connect()) as db:
+            changed = db.execute("""UPDATE jobs SET state='failed',result=?,error=?,updated=?
+                WHERE id=? AND state NOT IN ('failed','succeeded')""",
+                (json.dumps(result, ensure_ascii=False, allow_nan=False) if result is not None else None,
+                 message, time.time(), job['id'])).rowcount
+            if changed and job.get('rolling_module') == 'theft':
+                db.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)',
+                    (time.time(), 'system', 'theft.coverage_gap', job['camera'], f'{job["clip_start"]}–{job["clip_end"]}: {message}'))
+        if changed and job.get('rolling_module') == 'theft':
+            self.health['theft_monitor']['skipped_windows'] += 1
+
+    @staticmethod
+    def overlapping_signal(db, camera, site_id, kind, started, ended):
+        # Legacy clip-wide theft alarms had no localized evidence and must not absorb new signals.
+        if kind == 'theft':
+            scope = """AND json_extract(details,'$.start_seconds') IS NOT NULL
+                AND (json_extract(details,'$.rolling')=1 OR json_extract(details,'$.origin_event') IS NOT NULL)"""
+        else:
+            scope = "AND json_extract(details,'$.rolling')=1"
+        return db.execute("""SELECT id,COALESCE(json_extract(details,'$.seen_since'),started) AS first,
+                COALESCE(json_extract(details,'$.seen_until'),ended) AS last FROM events
+            WHERE source='analysis' AND camera=? AND site_id=? AND kind=? AND first < ? AND last > ? """ + scope +
+            " ORDER BY started,id LIMIT 1", (camera, site_id, kind, ended, started)).fetchone()
 
     def job_modules(self, job):
         requested = modules_for(self.store,job.get('site_id') or camera_site(self.store,job['camera'])) & {'fight','theft','face'}
-        return requested & {'fight'} if job.get('clip_start') is not None else requested
+        # Rolling jobs created before the module column existed were always fight-only.
+        return requested & {job.get('rolling_module') or 'fight'} if job.get('clip_start') is not None else requested
 
     def models_ready(self, job):
         analyzer = self.health['analyzer']
         ready = {m['id'] for m in analyzer.get('models', []) if m.get('state') == 'ready'}
         requested = self.job_modules(job)
-        required = {'theft':{'vadclip'}, 'fight':{'fight','vadclip'}, 'face':{'face'}}
         # Existing partial-analysis mode remains explicit in analyzer warnings.
         # An unrelated ready model must never consume a single-module job.
-        return analyzer.get('state') == 'ready' and any(ready & required[m] for m in requested)
+        return analyzer.get('state') == 'ready' and any(ready & ACTION_MODELS[m] for m in requested)
 
     async def work(self):
         while True:
@@ -398,8 +510,11 @@ class Engine:
                     raise RuntimeError('Видео больше не доступно')
                 await self.download_clip(job, path)
             self.store.execute('UPDATE jobs SET file=? WHERE id=?', (path.name, job['id']))
-            response = await self.client.post(self.settings.analyzer_url + '/analyze', json={'job_id': job['id'], 'mode': 'fight' if job.get('clip_start') is not None else 'all', 'modules': sorted(modules_for(self.store,job.get('site_id') or camera_site(self.store,job['camera'])) & {'fight','theft','face'})},
-                                              headers={'X-Worker-Key': self.settings.worker_key}, timeout=600)
+            modules = self.job_modules(job)
+            mode = 'fight' if job.get('clip_start') is not None and modules == {'fight'} else 'all'
+            response = await self.client.post(self.settings.analyzer_url + '/analyze',
+                json={'job_id': job['id'], 'mode': mode, 'modules': sorted(modules)},
+                headers={'X-Worker-Key': self.settings.worker_key}, timeout=600)
             response.raise_for_status()
             self.apply_result(job, response.json())
         except Exception as exc:
@@ -408,9 +523,12 @@ class Engine:
                                    ('Сервис временно недоступен или занят. Ожидаем повтор.',time.time()+30,job['id']))
                 return
             attempts = job['attempts'] + 1
-            state = 'failed' if attempts >= 3 else 'queued'
-            self.store.execute('UPDATE jobs SET state=?,error=?,updated=? WHERE id=?',
-                               (state, 'Анализ недоступен или файл не поддерживается. Проверьте модели и видео.', time.time() + (30 if state == 'queued' else 0), job['id']))
+            message = 'Анализ недоступен или файл не поддерживается. Проверьте модели и видео.'
+            if attempts >= 3:
+                self.fail_job(job, message)
+            else:
+                self.store.execute("UPDATE jobs SET state='queued',error=?,updated=? WHERE id=?",
+                                   (message, time.time() + 30, job['id']))
             log.warning('Analysis %s failed: %s', job['id'], type(exc).__name__)
 
 

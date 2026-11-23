@@ -52,3 +52,16 @@ dialog{background:#fff;color:var(--ink);border-color:#c8d7eb;box-shadow:0 30px 1
 
 .platform-view .status-row small{white-space:normal;max-width:100%;overflow-wrap:anywhere}
 .platform-view .status-row{flex-wrap:wrap;gap:12px}.platform-view .status-row>small{flex:1 1 180px;min-width:0}.platform-view .status-row>span{min-width:0;overflow-wrap:anywhere}
+
+.theft-alert,.retail-coverage,.theft-interval{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 20px}
+.theft-alert{border-left:4px solid #b67a20}
+.retail-coverage+.retail-coverage{border-top:1px solid var(--line);margin-top:15px;padding-top:15px}
+.retail-coverage>div{display:grid;gap:5px}
+.retail-coverage span,.retail-coverage small,.theft-signal p,.theft-interval span{color:var(--muted)}
+#retail-monitor .section-heading{flex-wrap:wrap}
+#retail-monitor button,.theft-interval button{white-space:normal;text-align:left}
+.theft-signal{padding:16px;background:#f2f6fc;border-radius:8px;margin:14px 0}
+.theft-signal p{font-size:14px;margin:6px 0;overflow-wrap:anywhere}
+.theft-facts{display:flex;gap:8px 24px;flex-wrap:wrap;margin:10px 0 0}
+.theft-facts dt{font-size:13px;color:var(--muted)}
+.theft-facts dd{margin:2px 0;overflow-wrap:anywhere}
