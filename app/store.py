@@ -118,9 +118,9 @@ class Store:
                 item.pop('stream')
         return items
 
-    def events(self, status=None, kind=None, camera=None, limit=100, site_id=None):
+    def events(self, status=None, kind=None, camera=None, limit=100, site_id=None, source=None):
         filters, args = [], []
-        for name, value in [('status', status), ('kind', kind), ('camera', camera), ('site_id', site_id)]:
+        for name, value in [('status', status), ('kind', kind), ('camera', camera), ('site_id', site_id), ('source', source)]:
             if value:
                 filters.append(f'{name}=?')
                 args.append(value)

@@ -221,4 +221,9 @@ def main():
 
 
 if __name__ == '__main__':
+    from browser_multicam_visits import main as check_multicam_and_visits
+    from browser_visits_config import main as check_visit_configuration
+
     main()
+    check_multicam_and_visits()
+    check_visit_configuration()

@@ -10,7 +10,8 @@ import time
 import uuid
 
 import httpx
-from . import admission, retail
+from . import admission, retail, retail_multicam, visits
+from .retail_appearance import MAX_IMAGE_BYTES, clothing_signature, live_crop_box
 from .restaurant import RestaurantService
 from .restaurant_feed import RestaurantFeed
 from .platform import modules_for, camera_site
@@ -18,6 +19,28 @@ from .platform import modules_for, camera_site
 log = logging.getLogger('glazza.engine')
 ACTION_MODELS = {'theft': {'vadclip'}, 'fight': {'fight', 'vadclip'}, 'face': {'face'}}
 SAFE_ID = re.compile(r'^[a-zA-Z0-9_.-]{1,120}$')
+RETAIL_TRACKERS = (retail_multicam, visits)
+
+
+def finite(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def zone_matches(live_zone, polygon):
+    if not isinstance(live_zone, dict) or live_zone.get('enabled', True) is not True or not polygon:
+        return False
+    allowed = live_zone.get('objects', [])
+    if not isinstance(allowed, list) or (allowed and 'person' not in allowed):
+        return False
+    raw = live_zone.get('coordinates')
+    if not isinstance(raw, str):
+        return False
+    try:
+        coords = [float(n) for n in raw.split(',')]
+    except ValueError:
+        return False
+    expected = [v for point in polygon for v in point]
+    return len(coords) == len(expected) and all(abs(a-b) < 0.00001 for a,b in zip(coords, expected))
 
 
 class Engine:
@@ -25,6 +48,11 @@ class Engine:
         self.store, self.settings = store, settings
         admission.initialize(store)
         retail.initialize(store)
+        for tracker in RETAIL_TRACKERS:
+            tracker.initialize(store)
+        self.retail_watermark = None
+        self.last_retail_replay = 0
+        self.retail_frame_shapes = {}
         self.restaurant = RestaurantService(store, settings)
         self.restaurant_feed = RestaurantFeed(settings)
         self.health = {'frigate': 'starting', 'last_sync': None, 'error': None, 'analyzer': {'state': 'unavailable', 'models': []}}
@@ -44,7 +72,8 @@ class Engine:
         self.restaurant_feed.start()
         self.tasks = [asyncio.create_task(self.supervise(name, worker)) for name, worker in
                       [('poll',self.poll),('analysis',self.work),('cameras',self.poll_camera_signals),('admission',self.admission_work),
-                       ('restaurant', self.restaurant_work), ('restaurant_delivery', self.restaurant_delivery)]]
+                       ('restaurant', self.restaurant_work), ('restaurant_delivery', self.restaurant_delivery),
+                       ('retail_snapshots', self.retail_snapshot_work)]]
 
     async def restaurant_work(self):
         while True:
@@ -97,14 +126,77 @@ class Engine:
             raise ValueError('Invalid camera statistics')
         service = payload.get('service')
         updated = service.get('last_updated') if isinstance(service, dict) else None
-        valid_number = lambda n: isinstance(n, (int, float)) and not isinstance(n, bool) and math.isfinite(n)
         cameras = {}
         for identifier, data in payload['cameras'].items():
             fps = data.get('camera_fps') if isinstance(data, dict) else None
-            cameras[identifier] = fps if valid_number(fps) and fps >= 0 else None
+            cameras[identifier] = fps if finite(fps) and fps >= 0 else None
         # Publish only measured FPS and timestamps; raw NVR statistics can contain secrets.
-        self.camera_signal_snapshot = {'checked_at': time.time(), 'updated_at': updated if valid_number(updated) else None,
+        self.camera_signal_snapshot = {'checked_at': time.time(), 'updated_at': updated if finite(updated) else None,
                                        'cameras': cameras, 'reason': None}
+
+        await self.record_retail_health(payload, updated)
+
+    def mark_retail_unavailable(self, now):
+        self.retail_frame_shapes.clear()
+        for tracker in RETAIL_TRACKERS:
+            for camera in tracker.configured_cameras(self.store):
+                tracker.record_health(self.store, camera, now, False)
+
+    async def record_retail_health(self, stats, updated):
+        now = time.time()
+        scopes = [(tracker, tracker.configured_cameras(self.store)) for tracker in RETAIL_TRACKERS]
+        if not any(cameras for _, cameras in scopes):
+            self.retail_frame_shapes.clear()
+            return
+        if not finite(updated) or not 0 <= now - updated <= 30:
+            self.mark_retail_unavailable(now)
+            return
+        try:
+            response = await self.client.get(self.settings.frigate_url + '/api/config', timeout=5)
+            response.raise_for_status()
+            config = response.json()
+            if not isinstance(config, dict) or not isinstance(config.get('cameras'), dict):
+                raise ValueError('Missing live camera configuration')
+        except (httpx.HTTPError, ValueError):
+            self.mark_retail_unavailable(now)
+            return
+        # Retain only boolean health samples. The live configuration contains stream addresses.
+        polygons = {c['id']: {z['name']: z['points'] for z in c['zones']} for c in self.store.cameras()}
+        shapes = {}
+        detectors = stats.get('detectors')
+        functioning_detector = isinstance(detectors, dict) and any(
+            isinstance(device, dict) and finite(device.get('pid')) and device['pid'] > 0
+            and finite(device.get('detection_start'))
+            and (device['detection_start'] == 0 or -1 <= updated - device['detection_start'] <= 10)
+            for device in detectors.values())
+        for tracker, cameras in scopes:
+            zones = tracker.configured_zones(self.store)
+            for camera in cameras:
+                data = stats['cameras'].get(camera) or {}
+                live = config['cameras'].get(camera) or {}
+                camera_fps, process_fps = data.get('camera_fps'), data.get('process_fps')
+                objects = live.get('objects', config.get('objects', {})).get('track', [])
+                snapshots = live.get('snapshots', config.get('snapshots', {}))
+                recording = live.get('record', config.get('record', {}))
+                # Frigate writes tracked objects to its event DB only once they can carry media.
+                observes_events = (recording.get('enabled') is True
+                                   or snapshots.get('enabled') is True and not snapshots.get('required_zones'))
+                # detection_fps may legitimately be zero in an empty checkout.
+                healthy = (functioning_detector and observes_events and finite(camera_fps) and camera_fps > 0 and finite(process_fps) and process_fps > 0
+                    and data.get('detection_enabled') is True and live.get('enabled') is True
+                    and live.get('detect', {}).get('enabled') is True and live.get('motion', {}).get('enabled', True) is True
+                    and isinstance(objects, list) and 'person' in objects and data.get('connection_quality') != 'unusable')
+                if camera in zones:
+                    names = zones[camera]
+                    if isinstance(names, str):
+                        names = [names]
+                    healthy = healthy and all(zone_matches(live.get('zones', {}).get(name), polygons.get(camera, {}).get(name))
+                                              for name in names)
+                tracker.record_health(self.store, camera, updated, healthy)
+                width, height = live.get('detect', {}).get('width'), live.get('detect', {}).get('height')
+                if healthy and type(width) is int and type(height) is int and width > 0 and height > 0:
+                    shapes[camera] = (width, height)
+        self.retail_frame_shapes = shapes
 
     async def poll_camera_signals(self):
         while True:
@@ -112,7 +204,9 @@ class Engine:
                 try:
                     await self.sync_camera_signals()
                 except Exception:
-                    self.camera_signal_snapshot = {'checked_at': time.time(), 'updated_at': None, 'cameras': {}, 'reason': 'nvr_unavailable'}
+                    now = time.time()
+                    self.camera_signal_snapshot = {'checked_at': now, 'updated_at': None, 'cameras': {}, 'reason': 'nvr_unavailable'}
+                    self.mark_retail_unavailable(now)
             await asyncio.sleep(self.settings.poll_seconds)
 
     def camera_signal(self, camera_id, now=None):
@@ -140,12 +234,93 @@ class Engine:
         await asyncio.to_thread(self.restaurant_feed.close)
         await self.client.aclose()
 
+    async def retail_snapshot_work(self):
+        while True:
+            if not self.settings.demo:
+                await self.sync_retail_snapshots()
+            await asyncio.sleep(1)
+
+    async def sync_retail_snapshots(self):
+        now = time.time()
+        requests = {}
+        for tracker in RETAIL_TRACKERS:
+            for job in tracker.snapshot_jobs(self.store, now, limit=8):
+                key = (job['site_id'], job['camera'], job['source_id'], job['snapshot_at'], job['ended'],
+                       tuple(job['box']) if job.get('box') is not None else None)
+                requests.setdefault(key, []).append((tracker, job))
+        groups = list(requests.values())
+        # Fair bounded batches across trackers. Both may be waiting for the same Frigate image.
+        for start in range(0, len(groups), 4):
+            batch = groups[start:start + 4]
+            signatures = await asyncio.gather(*(self.snapshot_signature(group[0][1]) for group in batch))
+            finished = time.time()
+            for group, descriptor in zip(batch, signatures):
+                for tracker, job in group:
+                    tracker.snapshot_result(self.store, job, descriptor, finished)
+        if groups and self.retail_watermark is not None:
+            for tracker in RETAIL_TRACKERS:
+                tracker.advance(self.store, self.retail_watermark)
+
+    async def snapshot_signature(self, job):
+        source_id = job['source_id']
+        if not isinstance(source_id, str) or not SAFE_ID.fullmatch(source_id) or source_id in ('.', '..'):
+            return None
+        active = job['ended'] is None
+        box = job.get('box')
+        if active:
+            shape = self.retail_frame_shapes.get(job['camera'])
+            if not shape or not finite(job.get('snapshot_at')):
+                return None
+            # Frigate pads live crops to at least 300 px. Locate the actual person inside that crop.
+            box = live_crop_box(box, *shape)
+        if box is None:
+            return None
+        suffix = 'snapshot.jpg' if active else 'snapshot-clean.webp'
+        params = {'crop': 1, 'bbox': 0, 'timestamp': 0, 'height': 320} if active else None
+        expected_type = 'image/jpeg' if active else 'image/webp'
+        try:
+            async with asyncio.timeout(7):
+                async with self.client.stream('GET', self.settings.frigate_url + f'/api/events/{source_id}/{suffix}',
+                                              params=params, timeout=5) as response:
+                    if response.status_code != 200 or response.headers.get('content-type', '').split(';')[0] != expected_type:
+                        return None
+                    if active:
+                        # A completed legacy JPEG may ignore crop=1. Only the live tracked-object
+                        # path in Frigate 0.18.2 responds no-store with the selected frame timestamp.
+                        frame = float(response.headers.get('x-frame-time', 'nan'))
+                        if response.headers.get('cache-control') != 'no-store' or not math.isfinite(frame) or frame <= 0:
+                            return None
+                        if abs(frame - job['snapshot_at']) > 0.001 or self.retail_frame_shapes.get(job['camera']) != shape:
+                            return None  # A newer image cannot be paired with an older person's box.
+                    elif 'no-cache' in response.headers.get('cache-control', ''):
+                        return None  # Frigate considers the event active but the saved box is final.
+                    if int(response.headers.get('content-length', '0')) > MAX_IMAGE_BYTES:
+                        return None
+                    data = bytearray()
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        if len(data) + len(chunk) > MAX_IMAGE_BYTES:
+                            return None
+                        data.extend(chunk)
+                if not data:
+                    return None
+                return await asyncio.to_thread(clothing_signature, bytes(data), box=box)
+        except (httpx.HTTPError, TimeoutError, ValueError, OSError):
+            return None
+
     def ingest(self, events):
         cameras = {c['id']: c for c in self.store.cameras()}
         for event in events:
             camera = cameras.get(event.get('camera'))
             source_id = str(event.get('id', ''))
-            if not camera or event.get('label') != 'person' or not SAFE_ID.fullmatch(source_id) or event.get('false_positive'):
+            if not camera or not SAFE_ID.fullmatch(source_id) or source_id in ('.', '..'):
+                continue
+            if event.get('false_positive') or event.get('label') != 'person':
+                # A late NVR correction must invalidate any previously accepted person evidence.
+                prior = self.store.rows("SELECT camera,source_id,started,site_id FROM events WHERE source='frigate' AND source_id=? AND camera=? AND started=? LIMIT 1",
+                                        (source_id, camera['id'], event.get('start_time')))
+                if prior:
+                    end = event.get('end_time')
+                    self.invalidate_track(prior[0], end if finite(end) and end >= prior[0]['started'] else time.time())
                 continue
             started = float(event['start_time'])
             ended = event.get('end_time')
@@ -159,6 +334,8 @@ class Engine:
             event_id = self.store.event(source='frigate', source_id=source_id, camera=camera['id'], kind=kind,
                                        score=score, started=started, ended=ended, details={'zones': entered, 'has_clip': bool(event.get('has_clip')), 'has_snapshot': bool(event.get('has_snapshot'))}, site_id=site_id)
             retail.observe(self.store, camera, event, event_id, site_id)
+            for tracker in RETAIL_TRACKERS:
+                tracker.observe(self.store, camera, event, event_id, site_id)
             if ended is not None:
                 self.store.execute("UPDATE events SET ended=? WHERE source='frigate' AND source_id=?", (ended,source_id))
             admission.ingest(self.store, event_id, source_id, camera['id'], entered, started, site_id=site_id)
@@ -182,6 +359,8 @@ class Engine:
                 break
 
     async def sync(self):
+        # A partial refresh must never release decisions using a previous batch's watermark.
+        self.retail_watermark = None
         if self.settings.demo:
             self.health.update(frigate='demo', last_sync=time.time(), error=None)
             self.health['analyzer'] = {'state': 'demo', 'models': []}
@@ -190,31 +369,89 @@ class Engine:
         cursor = self.store.rows("SELECT value FROM meta WHERE key='poll_cursor'")
         after = float(cursor[0]['value']) if cursor else time.time() - 3600
         until = time.time()
-        async def window(start, end, depth=0):
-            response = await self.client.get(self.settings.frigate_url + '/api/events',
-                                             params={'after': start, 'before': end, 'limit': 250, 'include_thumbnails': 0})
+        configured = set().union(*(tracker.configured_cameras(self.store) for tracker in RETAIL_TRACKERS))
+        async def window(start, end, filters, depth=0, open_ids=None):
+            response = await self.client.get(self.settings.frigate_url + '/api/events', params={
+                'after': start, 'before': end, 'limit': 250, 'include_thumbnails': 0, **filters})
             response.raise_for_status()
             events = response.json()
+            if not isinstance(events, list) or any(not isinstance(event, dict) for event in events):
+                raise ValueError('Invalid Frigate event list')
             if len(events) >= 250:
-                if depth >= 18 or end - start < 0.001:
+                if depth >= 48 or end - start < 0.001:
                     raise RuntimeError('Слишком много событий: уменьшите интервал опроса')
                 midpoint = (start + end) / 2
-                await window(start, midpoint, depth + 1)
-                await window(midpoint - 0.000001, end, depth + 1)
-            else:
-                self.ingest(events)
-        await window(after, until)
-        # Revisit tracked objects still running, independently from the main cursor.
-        active = self.store.rows("SELECT DISTINCT source_id FROM events WHERE source='frigate' AND ended IS NULL LIMIT 500")
-        for item in active:
-            response = await self.client.get(self.settings.frigate_url + f"/api/events/{item['source_id']}")
-            if response.status_code == 200:
-                self.ingest([response.json()])
-            elif response.status_code == 404:
-                self.store.execute('UPDATE events SET ended=? WHERE source_id=? AND ended IS NULL', (until, item['source_id']))
-        self.store.execute("INSERT INTO meta(key,value) VALUES('poll_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(until - 1),))
+                await window(start, midpoint, filters, depth + 1, open_ids)
+                await window(midpoint - 0.000001, end, filters, depth + 1, open_ids)
+                return
+            for event in events:
+                if event.get('camera') not in configured or event.get('label') != 'person' or event.get('false_positive'):
+                    continue
+                source = event.get('id')
+                if (not isinstance(source, str) or not SAFE_ID.fullmatch(source) or source in ('.', '..')
+                        or not finite(event.get('start_time')) or ('end_time' not in event)
+                        or event['end_time'] is not None and (not finite(event['end_time']) or event['end_time'] < event['start_time'])):
+                    raise ValueError('Incomplete retail person-track observation')
+                if open_ids is not None and event['end_time'] is None:
+                    open_ids.add(source)
+            self.ingest(events)
+        await window(after, until, {})
+        open_ids = set()
+        replay = bool(configured and (not self.last_retail_replay or until - self.last_retail_replay >= 30))
+        cameras = sorted(configured)
+        for offset in range(0, len(cameras), 32):
+            filters = {'cameras': ','.join(cameras[offset:offset+32]), 'labels': 'person'}
+            # Event lists filter by start time. A delayed database insert or an older
+            # still-active checkout shopper can otherwise slip past the main cursor.
+            await window(0, until, {**filters, 'in_progress': 1}, open_ids=open_ids)
+            if replay and after > until - 1260:
+                await window(until - 1260, after + 0.000001, {'cameras': filters['cameras']})
+        await self.refresh_open_tracks(until, open_ids)
         self.enqueue_completed()
+        for tracker in RETAIL_TRACKERS:
+            tracker.advance(self.store, until)
+        self.store.execute("INSERT INTO meta(key,value) VALUES('poll_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(until - 1),))
+        self.retail_watermark = until
+        if replay:
+            self.last_retail_replay = until
         self.health.update(frigate='online', last_sync=until, error=None)
+
+    async def refresh_open_tracks(self, until, open_ids):
+        # Keyset paging covers all tracks, with a bounded number of in-flight requests.
+        # Advancing after just the first page could silently miss an active checkout track.
+        last_id = ''
+        while True:
+            tracks = self.store.rows("""SELECT source_id,camera,site_id,MIN(started) AS started FROM events
+                WHERE source='frigate' AND ended IS NULL AND source_id>? GROUP BY source_id,camera,site_id
+                ORDER BY source_id LIMIT 8""", (last_id,))
+            if not tracks:
+                return
+            last_id = tracks[-1]['source_id']
+            tracks = [track for track in tracks if track['source_id'] not in open_ids]
+            responses = await asyncio.gather(*[
+                self.client.get(self.settings.frigate_url + f"/api/events/{track['source_id']}") for track in tracks
+            ], return_exceptions=True)
+            for track, response in zip(tracks, responses):
+                if isinstance(response, BaseException):
+                    raise response
+                source_id = track['source_id']
+                if response.status_code == 404:
+                    self.invalidate_track(track, until)
+                    continue
+                response.raise_for_status()
+                event = response.json()
+                if not isinstance(event, dict) or event.get('id') != source_id or event.get('camera') != track['camera']:
+                    raise ValueError('Unexpected Frigate track response')
+                if event.get('false_positive') or event.get('label') != 'person':
+                    self.invalidate_track(track, until)
+                else:
+                    self.ingest([event])
+
+    def invalidate_track(self, track, until):
+        for tracker in RETAIL_TRACKERS:
+            tracker.invalidate_track(self.store, track['camera'], track['source_id'], track['started'], until, track['site_id'])
+        self.store.execute("""UPDATE events SET ended=? WHERE source='frigate' AND source_id=?
+            AND camera=? AND site_id=? AND ended IS NULL""", (until, track['source_id'], track['camera'], track['site_id']))
 
     async def poll(self):
         while True:
@@ -326,6 +563,8 @@ class Engine:
             AND NOT EXISTS(SELECT 1 FROM jobs WHERE event_id=events.id AND state IN ('queued','running'))""", (cutoff,))
         self.store.execute('DELETE FROM audit WHERE at < ?', (cutoff,))
         self.restaurant.cleanup(now=now)
+        for tracker in RETAIL_TRACKERS:
+            tracker.cleanup(self.store, now)
 
     async def download_clip(self, job, path):
         temporary = path.with_suffix('.part')

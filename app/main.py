@@ -17,6 +17,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .admission import register as register_admission
 from .retail import register as register_retail
+from .retail_multicam_config import register as register_retail_multicam
+from .visits_config import register as register_visits_config
+from . import visits
 from .restaurant import register as register_restaurant
 from .platform import register as register_platform, check_site, modules_for
 from .config import Settings
@@ -107,6 +110,30 @@ def create_app(settings=None, background=True):
     register_admission(app, store, engine, authenticated, writable)
     register_platform(app, store, engine, authenticated, writable)
     register_retail(app, store, authenticated, writable)
+    register_retail_multicam(app, store, authenticated, writable)
+    register_visits_config(app, store, authenticated, writable)
+
+    def require_retail_site(site_id):
+        rows = store.rows('SELECT profile FROM sites WHERE id=?', (site_id,))
+        if not rows or rows[0]['profile'] != 'retail':
+            raise HTTPException(404, 'Магазин не найден')
+
+    @app.get('/api/retail/visits/{site_id}')
+    def recent_visits(site_id: str, limit: int = 100, active_only: bool = False, user=Depends(authenticated)):
+        require_retail_site(site_id)
+        config = store.rows('SELECT state FROM retail_visit_configs WHERE site_id=?', (site_id,))
+        now = time.time()
+        return {'visits': visits.list_visits(store, site_id, now, limit=max(1, min(limit, 500)), active_only=active_only),
+                'configured': bool(config), 'state': config[0]['state'] if config else None,
+                'checked_at': now, 'poll_seconds': settings.poll_seconds}
+
+    @app.get('/api/retail/visits/{site_id}/{visit_id}')
+    def visit_timeline(site_id: str, visit_id: str, user=Depends(authenticated)):
+        require_retail_site(site_id)
+        result = visits.get_visit(store, site_id, visit_id, time.time())
+        if result is None:
+            raise HTTPException(404, 'Визит не найден')
+        return result
     register_restaurant(app, store, engine, authenticated, writable)
 
     @app.get('/healthz')
@@ -156,12 +183,14 @@ def create_app(settings=None, background=True):
             JOIN cameras c ON c.id=r.camera JOIN sites s ON s.id=c.site_id
             WHERE s.profile='retail' AND c.site_id=? ORDER BY r.camera""", (site_id,)) if site_id else []
         route_cameras = [r['camera'] for r in routes if r['state'] == 'active']
+        multicam = store.rows('SELECT * FROM retail_multicam_routes WHERE site_id=?', (site_id,)) if site_id else []
         return {'mode':mode,'site_id':site_id,'cameras':len(store.cameras(site_id=site_id)),'counts':counts,
+                'retail_multicam':multicam[0] if multicam else None,
                 'retail_routes':{'camera_ids':route_cameras,'active':len(route_cameras),
                                 'invalidated':len(routes) - len(route_cameras)},
                 'pending_fights':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='fight'"+scope,args)[0]['n'],
                 'pending_thefts':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind='theft'"+scope,args)[0]['n'],
-                'pending':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind!='person'"+scope,args)[0]['n'],
+                'pending':store.rows("SELECT count(*) AS n FROM events WHERE status='new' AND kind NOT IN ('person','retail_journey')"+scope,args)[0]['n'],
                 'health':engine.health_snapshot(),'jobs':store.rows('SELECT state,count(*) AS n FROM jobs WHERE 1=1'+scope+' GROUP BY state',args),
                 'retention_days':settings.retention_days}
 
@@ -265,17 +294,23 @@ def create_app(settings=None, background=True):
         return {'saved': True, 'restarted': True}
 
     @app.get('/api/events')
-    def events(status: str | None = None, kind: str | None = None, camera: str | None = None, limit: int = 100, site_id: str | None = None, user=Depends(authenticated)):
+    def events(status: str | None = None, kind: str | None = None, camera: str | None = None, limit: int = 100,
+               site_id: str | None = None, source: str | None = None, user=Depends(authenticated)):
         check_site(store, site_id)
-        return store.events(status, kind, camera, max(1, min(limit, 500)), site_id=site_id)
+        return store.events(status, kind, camera, max(1, min(limit, 500)), site_id=site_id, source=source)
 
     @app.patch('/api/events/{event_id}')
     def review(event_id: str, body: Review, user=Depends(authenticated)):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            current = db.execute('SELECT status,note FROM events WHERE id=?', (event_id,)).fetchone()
+            current = db.execute("""SELECT kind,status,note,
+                json_extract(details,'$.association_state') AS association_state FROM events WHERE id=?""", (event_id,)).fetchone()
             if not current:
                 raise HTTPException(404, 'Событие не найдено')
+            if current['kind'] == 'retail_journey':
+                raise HTTPException(409, 'Этот маршрут сохранён в журнале наблюдений и не требует решения.')
+            if current['association_state'] == 'withdrawn':
+                raise HTTPException(409, 'Связь между камерами отозвана. Обновите карточку события.')
             if (body.status, body.note) == (current['status'], current['note']):
                 return {'ok': True}
             if ((body.expected_status is not None and current['status'] != body.expected_status)
@@ -392,7 +427,7 @@ def create_app(settings=None, background=True):
             raise HTTPException(404)
         event = rows[0]
         archive_path = None
-        if event['source'] in ('analysis', 'retail_route'):
+        if event['source'] in ('analysis', 'retail_route', 'retail_multicam'):
             details = json.loads(event['details'])
             if event['source'] == 'analysis' and kind == 'clip':
                 try:

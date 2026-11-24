@@ -2,9 +2,9 @@
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const titles = {restaurant:'Ресторан',platform:'Организации и объекты',admission:'Допуск и посетители',overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
-const kinds = {intrusion:'Вход в запретную зону', fight:'Возможная драка', theft:'Возможная кража', person:'Человек в кадре'};
-const symbols = {intrusion:'◇', fight:'ϟ', theft:'◈', person:'♙'};
+const titles = {visits:'Визиты посетителей',restaurant:'Ресторан',platform:'Организации и объекты',admission:'Допуск и посетители',overview:'Обзор', cameras:'Камеры', map:'Карта Казахстана', events:'События', analysis:'Анализ видео', system:'Система'};
+const kinds = {retail_journey:'Маршрут через кассу', intrusion:'Вход в запретную зону', fight:'Возможная драка', theft:'Возможная кража', person:'Человек в кадре'};
+const symbols = {retail_journey:'↗', intrusion:'◇', fight:'ϟ', theft:'◈', person:'♙'};
 const statuses = {new:'Не проверено', confirmed:'Подтверждено', dismissed:'Отклонено'};
 const jobStatuses = {queued:'В очереди', running:'Анализируем', failed:'Ошибка', succeeded:'Готово'};
 let state = {view:'overview', session:null, overview:null, cameras:[], cameraStatus:{}, events:[], jobs:[]};
@@ -32,10 +32,19 @@ function head(title, description, actions = '') { return `<div class="page-head"
 function empty(title, description = '') { return `<div class="empty"><span>◎</span><div class="heading-with-help">${escapeHTML(title)}${description ? help(description) : ""}</div></div>`; }
 function pill(label, type = '') { return `<span class="pill ${type}">${escapeHTML(label)}</span>`; }
 function eventLabel(event) {
+  if (event.source === 'retail_multicam' && event.kind === 'theft') return 'Полка и выход · две камеры';
   return event.source === 'retail_route' ? 'Маршрут от полки до выхода' : kinds[event.kind] || event.kind;
 }
-function eventStatus(event) { return pill(event.kind === 'theft' ? theftStatuses[event.status] : statuses[event.status], event.status === 'new' ? 'warning' : event.status === 'dismissed' ? 'neutral' : ''); }
-function showLogin() { window.glazzaLogin.conceal(); hideHelp(); stopWebcam(); disposeCameraMap(); state.session = null; resetRestaurantState(); $('#login').hidden = false; $('#workspace').hidden = true; clearInterval(timer); clearInterval(imageTimer); }
+function eventStatusText(event) {
+  if (event.details?.association_state === 'withdrawn') return 'Связь отозвана';
+  if (event.kind === 'retail_journey') return 'Записи связаны';
+  return event.kind === 'theft' ? theftStatuses[event.status] : statuses[event.status];
+}
+function eventStatus(event) {
+  const neutral = event.kind === 'retail_journey' || event.status === 'dismissed' || event.details?.association_state === 'withdrawn';
+  return pill(eventStatusText(event), neutral ? 'neutral' : event.status === 'new' ? 'warning' : '');
+}
+function showLogin() { stopVisitMonitor(); if ($('#modal').open) $('#modal').close(); $('#modal-body').replaceChildren(); window.glazzaLogin.conceal(); hideHelp(); stopWebcam(); disposeCameraMap(); state.session = null; resetRestaurantState(); $('#login').hidden = false; $('#workspace').hidden = true; clearInterval(timer); clearInterval(imageTimer); }
 function showWorkspace() {
   $('#login').hidden = true; $('#workspace').hidden = false; $('#demo-banner').hidden = !state.session.demo;
   $('#user-name').textContent = state.session.username;
@@ -64,13 +73,13 @@ async function refresh() {
     if (refreshPending) { refreshPending = false; refresh(); }
   }
 }
-function navigate(view) { hideHelp(); state.view = view; render(); refresh(); }
+function navigate(view) { if (view !== 'visits') stopVisitMonitor(); hideHelp(); state.view = view; render(); refresh(); }
 function render() {
   if (!state.overview) return;
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === state.view));
   $('#breadcrumb').textContent = titles[state.view];
   if (state.view !== 'map') disposeCameraMap();
-  const methods = {restaurant:renderRestaurant,platform:renderPlatform,admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
+  const methods = {visits:renderVisits,restaurant:renderRestaurant,platform:renderPlatform,admission:renderAdmission,map:renderCameraMap, overview:renderOverview, cameras:renderCameras, events:renderEvents, analysis:renderAnalysis, system:renderSystem};
   $('#content').classList.toggle('platform-view',state.view==='platform');
   $('#content').classList.toggle('restaurant-view',state.view==='restaurant');
   if(state.view!=='restaurant')$('#content').classList.remove('restaurant-stale');
@@ -98,11 +107,11 @@ function renderAlerts() {
   if (state.overview.pending_fights > 0) {
     if (!$('.fight-alert', $('#content'))) {
       $('#content').insertAdjacentHTML('afterbegin', `<div class="fight-alert" role="alert"><div><strong>ϟ Возможная драка · <span class="fight-alert-count"></span></strong>${help("Откройте запись и проверьте происходящее.", "Действия при сигнале драки")}</div><button class="secondary" id="open-fights">Проверить сигналы</button></div>`);
-      $('#open-fights').onclick = () => {filters.kind='fight';filters.status='new';filters.camera='';navigate('events');};
+      $('#open-fights').onclick = () => {filters={kind:'fight',status:'new',camera:''};navigate('events');};
     }
     $('.fight-alert-count').textContent = state.overview.pending_fights;
   } else remove('.fight-alert');
-  const theftQueueOpen = state.view === 'events' && filters.kind === 'theft' && filters.status === 'new' && !filters.camera;
+  const theftQueueOpen = state.view === 'events' && filters.kind === 'theft' && filters.status === 'new' && !filters.camera && !filters.source;
   if (state.overview.pending_thefts > 0 && !theftQueueOpen) {
     if (!$('.theft-alert', $('#content'))) {
       $('#content').insertAdjacentHTML('afterbegin', '<div class="warning-box theft-alert" role="status"><strong>Проверка возможной кражи · <span class="theft-alert-count"></span></strong><button class="secondary" id="open-thefts">Открыть очередь</button></div>');
@@ -127,7 +136,7 @@ function renderOverview() {
     : [o.counts.fight || 0,'Сигналы возможной драки','ϟ','За последние 24 часа'];
   const stats = [[o.cameras,'Камеры на объекте','▣','Настроенные подключения'],[count,'События за 24 часа','◎','Люди и сигналы моделей'],[o.pending,'Требуют внимания','◇','Ожидают проверки оператором'],signalStat];
   $('#content').innerHTML = head('Всё под наблюдением.', 'Важные события вашего объекта — в одном месте.', `<button class="secondary" data-action="refresh">↻ Обновить</button><button class="primary" data-action="add-camera">+ Подключить камеру</button>`) +
-    `<div class="stats">${stats.map(([n,label,sym,note]) => `<div class="stat"><div class="stat-top">${label}${help(note, label)}</div><div class="stat-value">${n.toString().padStart(2,'0')}</div></div>`).join('')}</div>${retailSite ? retailOverview(retailSite) : ''}<div class="grid-main"><section><div class="section-heading"><div class="heading-with-help"><h2>Камеры</h2>${help(state.session.demo ? "Примеры подключения" : "Кадр обновляется каждые 2 секунды", "О просмотре камер")}</div><button class="text-button" data-nav="cameras">Все камеры ↗</button></div><div class="camera-grid">${state.cameras.slice(0,3).map(cameraCard).join('')}${addTile()}</div></section><aside class="feed"><div class="feed-head"><h3>Последние события</h3>${pill('24 часа')}</div><div class="feed-items">${state.events.slice(0,5).map(e => `<button class="feed-item" data-event="${e.id}"><span class="event-icon ${e.kind}">${symbols[e.kind] || '◎'}</span><div><strong>${escapeHTML(eventLabel(e))}</strong><p>${escapeHTML(cameraName(e.camera))}</p><p>${e.kind === 'theft' ? theftStatuses[e.status] : statuses[e.status]}</p></div><span class="feed-time">${timeLabel(e.started)}</span></button>`).join('') || empty('Пока спокойно','События появятся после подключения камеры.')}</div><div class="feed-footer"><button class="text-button" data-nav="events">Открыть журнал событий →</button></div></aside></div>`;
+    `<div class="stats">${stats.map(([n,label,sym,note]) => `<div class="stat"><div class="stat-top">${label}${help(note, label)}</div><div class="stat-value">${n.toString().padStart(2,'0')}</div></div>`).join('')}</div>${retailSite ? retailOverview(retailSite) : ''}<div class="grid-main"><section><div class="section-heading"><div class="heading-with-help"><h2>Камеры</h2>${help(state.session.demo ? "Примеры подключения" : "Кадр обновляется каждые 2 секунды", "О просмотре камер")}</div><button class="text-button" data-nav="cameras">Все камеры ↗</button></div><div class="camera-grid">${state.cameras.slice(0,3).map(cameraCard).join('')}${addTile()}</div></section><aside class="feed"><div class="feed-head"><h3>Последние события</h3>${pill('24 часа')}</div><div class="feed-items">${state.events.slice(0,5).map(e => `<button class="feed-item" data-event="${e.id}"><span class="event-icon ${e.kind}">${symbols[e.kind] || '◎'}</span><div><strong>${escapeHTML(eventLabel(e))}</strong><p>${escapeHTML(cameraName(e.camera))}</p><p>${eventStatusText(e)}</p></div><span class="feed-time">${timeLabel(e.started)}</span></button>`).join('') || empty('Пока спокойно','События появятся после подключения камеры.')}</div><div class="feed-footer"><button class="text-button" data-nav="events">Открыть журнал событий →</button></div></aside></div>`;
 }
 function renderCameras() {
   $('#content').innerHTML = head('Камеры и зоны', 'Подключите поток, отметьте запретную зону и примените настройки.', `<button class="secondary" data-nav="map">⌖ На карте</button><button class="secondary" data-action="apply">Применить настройки</button><button class="primary" data-action="add-camera">+ Подключить камеру</button>`) +
@@ -135,11 +144,13 @@ function renderCameras() {
 }
 let filters = {kind:'', status:'', camera:''};
 function renderEvents() {
-  const rows = state.events.filter(e => (!filters.kind || filters.kind === e.kind) && (!filters.status || filters.status === e.status) && (!filters.camera || filters.camera === e.camera));
+  const rows = state.events.filter(e => (!filters.kind || filters.kind === e.kind) && (!filters.status || filters.status === e.status) && (!filters.camera || filters.camera === e.camera) && (!filters.source || filters.source === e.source));
   const options = (items, selected) => items.map(([v,label]) => `<option value="${escapeHTML(v)}" ${selected === v ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('');
   $('#content').innerHTML = head('Журнал событий', 'Проверьте контекст и сохраните решение. Показаны последние 200 событий.', '<button class="secondary" data-action="export">↓ Экспорт JSON</button>') +
-    `<div class="filters"><select aria-label="Тип события" data-filter="kind">${options([['','Все события'],...Object.entries(kinds)],filters.kind)}</select><select aria-label="Статус" data-filter="status">${options([['','Все статусы'],...Object.entries(filters.kind === 'theft' ? theftStatuses : statuses)],filters.status)}</select><select aria-label="Камера" data-filter="camera">${options([['','Все камеры'],...state.cameras.map(c => [c.id,c.name]),['upload','Загруженное видео'],['webcam','Веб-камера']],filters.camera)}</select></div>` +
+    `<div class="filters">${filters.source === 'retail_multicam' ? '<button type="button" class="secondary" id="clear-multicam-filter" aria-label="Снять фильтр связей между камерами">Связи между камерами ×</button>' : ''}<select aria-label="Тип события" data-filter="kind">${options([['','Все события'],...Object.entries(kinds)],filters.kind)}</select><select aria-label="Статус" data-filter="status">${options([['','Все статусы'],...Object.entries(filters.kind === 'theft' ? theftStatuses : statuses)],filters.status)}</select><select aria-label="Камера" data-filter="camera">${options([['','Все камеры'],...state.cameras.map(c => [c.id,c.name]),['upload','Загруженное видео'],['webcam','Веб-камера']],filters.camera)}</select></div>` +
     (rows.length ? `<div class="table-wrap"><table><thead><tr><th>Событие</th><th>Камера</th><th>Время</th><th>Оценка модели</th><th>Решение</th><th></th></tr></thead><tbody>${rows.map(e => `<tr data-event="${e.id}" tabindex="0" role="button" aria-label="Открыть ${escapeHTML(eventLabel(e))}"><td><span class="table-title"><span class="event-icon ${e.kind}">${symbols[e.kind] || '◎'}</span>${escapeHTML(eventLabel(e))}</span></td><td>${escapeHTML(cameraName(e.camera))}</td><td>${dateLabel(e.started)}</td><td>${e.score == null ? '—' : Math.round(e.score * 100) + '%'}</td><td>${eventStatus(e)}</td><td>↗</td></tr>`).join('')}</tbody></table></div>` : empty('Событий по этим фильтрам нет','Измените фильтры или подключите камеры.'));
+  const clearSource = $('#clear-multicam-filter');
+  if (clearSource) clearSource.onclick = () => { delete filters.source; render(); refresh(); };
   $$('[data-filter]').forEach(node => node.onchange = () => { filters[node.dataset.filter] = node.value; node.blur(); render(); refresh(); });
 }
 function modelCard(name, description, symbol, status) {
@@ -215,7 +226,7 @@ function cameraSettings(id) {
 async function openEvent(id) {
   let e = state.events.find(e => e.id === id);
   if (!e) { try { e = await api('/events/' + id); } catch (error) { toast(error.message); return; } }
-  if (e.kind === 'theft') { reviewTheft(e); return; }
+  if (e.kind === 'theft' || e.kind === 'retail_journey') { reviewTheft(e); return; }
   modal(kinds[e.kind] || e.kind, `<div class="detail-media">${e.source === 'demo' ? 'Пример события · видеозапись не создавалась' : `<video controls preload="metadata" src="/api/events/${e.id}/media/clip" aria-label="Видео события"></video>`}</div><p id="media-error" class="error"></p><div class="detail-meta">${pill(cameraName(e.camera))}${pill(dateLabel(e.started),'neutral')}${eventStatus(e)}</div>${help((e.kind === "person" ? "Обнаружение человека в кадре." : "Проверьте запись перед решением. Сигнал не является доказательством нарушения.") + (e.score == null ? "" : " Оценка модели: " + Math.round(e.score*100) + "%."), "О сигнале модели")}<label>Комментарий<textarea id="review-note" maxlength="2000" placeholder="Что произошло на самом деле?">${escapeHTML(e.note)}</textarea></label><div class="form-actions"><button class="secondary" data-review="new">На проверку</button><button class="secondary" data-review="dismissed">Отклонить</button><button class="primary" data-review="confirmed">Подтвердить</button></div>`);
   const video = $('video', $('#modal')); if(video) video.onerror=()=>$('#media-error').textContent='Запись ещё не готова, недоступна или удалена по сроку хранения.';
   $$('[data-review]').forEach(button=>button.onclick=async()=> { try{await api('/events/'+id,{method:'PATCH',body:JSON.stringify({status:button.dataset.review,note:$('#review-note').value})});$('#modal').close();toast('Решение сохранено');refresh();}catch(error){toast(error.message);} });
@@ -256,11 +267,13 @@ function bindActions() {
     const action=button.dataset.action;
     if (action === 'theft-history') openTheftQueue('');
     if (action === 'retail-setup') window.openRetailSetup();
+    if (action === 'multicam-setup') openMulticamSetup();
+    if (action === 'multicam-history') { filters = {kind:'',status:'',camera:'',source:'retail_multicam'}; navigate('events'); }
     if(action==='webcam')openWebcam();if(action==='add-camera')addCamera();if(action==='refresh')refresh();if(action==='apply')applySettings();if(action==='upload')uploadVideo(button);
     if(action==='export'){const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(state.events,null,2)],{type:'application/json'}));a.href=url;a.download='glazza-events.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   });
 }
-$('#site-selector').onchange=async e=>{if(refreshing||uploadBusy){e.target.value=selectedSite;return;}selectedSite=e.target.value;e.target.blur();filters={kind:'',status:'',camera:''};disposeCameraMap();await refresh();};
+$('#site-selector').onchange=async e=>{if(refreshing||uploadBusy){e.target.value=selectedSite;return;}stopVisitMonitor();selectedSite=e.target.value;e.target.blur();if(state.view==='visits')render();filters={kind:'',status:'',camera:''};disposeCameraMap();await refresh();};
 $('#login-form').onsubmit=async event=>{event.preventDefault();if(!window.glazzaLogin.begin())return;const f=new FormData(event.target);try{state.session=await api('/login',{method:'POST',body:JSON.stringify({username:f.get('username'),password:f.get('password')})});$('input[name=password]',event.target).value='';window.glazzaLogin.conceal();showWorkspace();}catch(e){window.glazzaLogin.fail(e.message);}finally{window.glazzaLogin.finish();}};
 $('#logout').onclick=async()=>{try{await api('/logout',{method:'POST'});}finally{showLogin();}};
 $('#mobile-logout').onclick=$('#logout').onclick;
