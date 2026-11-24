@@ -7,7 +7,7 @@ decode ten RTSP streams or measure person-matching accuracy on store footage.
 import asyncio
 from io import BytesIO
 import math
-import subprocess
+from pathlib import Path
 import time
 
 import httpx
@@ -36,19 +36,12 @@ def outfit_image(camera, distractor, image_format='JPEG'):
 
 
 @pytest.fixture(scope='module')
-def clips(tmp_path_factory):
-    """Small valid MP4s, each with the crop/lighting from its own fake camera."""
-    directory = tmp_path_factory.mktemp('multicam-media')
-    output = {}
-    for camera in ROLES:
-        jpeg = directory / (camera + '.jpg')
-        jpeg.write_bytes(outfit_image(camera, False))
-        mp4 = directory / (camera + '.mp4')
-        subprocess.run(['ffmpeg', '-nostdin', '-loglevel', 'error', '-loop', '1', '-framerate', '5',
-                        '-i', str(jpeg), '-t', '4', '-vf', 'scale=160:160', '-c:v', 'mpeg4',
-                        '-threads', '1', '-pix_fmt', 'yuv420p', str(mp4)], check=True, timeout=15)
-        output[camera] = mp4.read_bytes()
-    return output
+def clips():
+    """Each pre-encoded clip shows the synthetic shopper in its own camera's lighting."""
+    directory = Path(__file__).with_name('fixtures')
+    media = {camera: (directory / f'retail-{role}.mp4').read_bytes() for camera, role in ROLES.items()}
+    assert len(set(media.values())) == len(ROLES)
+    return media
 
 
 class StoreFeed:
