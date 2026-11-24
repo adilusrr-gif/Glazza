@@ -121,7 +121,8 @@ def check_visits(page, site):
             ]})
         visible = status not in ('exited','expired') or 'active_only=false' in route.request.url
         return route.fulfill(json={'visits':[visit] if visible else [],'configured':True,'state':'active','checked_at':now,'poll_seconds':1})
-    page.route('**/api/retail/visits/'+site+'**', serve)
+    visits_path = re.escape('/api/retail/visits/' + site)
+    page.route(re.compile(visits_path + r'(?:/V-TEST-101)?(?:\?[^#]*)?$'), serve)
     page.locator('[data-view=overview]').click()
     page.locator('[data-nav=visits]').click()
     expect(page.locator('.visit-id')).to_have_text('ID V-TEST-101')
