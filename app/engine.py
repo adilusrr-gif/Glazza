@@ -67,7 +67,8 @@ class Engine:
         self.camera_signal_snapshot = {'checked_at': None, 'updated_at': None, 'cameras': {}, 'reason': 'waiting'}
 
     async def start(self):
-        self.store.execute("UPDATE jobs SET state='queued', updated=? WHERE state='running'", (time.time(),))
+        self.store.execute("""UPDATE jobs SET state='queued', attempts=MAX(0,attempts-1), updated=?
+            WHERE state='running'""", (time.time(),))
         self.restaurant_feed.set_tables(self.restaurant.configuration_tables())
         self.restaurant_feed.start()
         self.tasks = [asyncio.create_task(self.supervise(name, worker)) for name, worker in
@@ -573,15 +574,36 @@ class Engine:
         else:
             route = f"/api/events/{job['source_id']}/clip.mp4"
         try:
-            async with self.client.stream('GET', self.settings.frigate_url + route, timeout=60) as response:
-                response.raise_for_status()
-                size = 0
-                with temporary.open('wb') as handle:
-                    async for chunk in response.aiter_bytes():
-                        size += len(chunk)
-                        if size > self.settings.max_upload:
-                            raise RuntimeError('Видео превышает лимит 200 МБ')
-                        handle.write(chunk)
+            # HTTPX timeouts apply between reads. Bound the full export as well, so a
+            # trickling NVR cannot indefinitely occupy a download slot.
+            async with asyncio.timeout(120):
+                async with self.client.stream('GET', self.settings.frigate_url + route,
+                                              headers={'Accept-Encoding': 'identity'}, timeout=60) as response:
+                    response.raise_for_status()
+                    if response.status_code != 200 or 'content-range' in response.headers:
+                        raise ValueError('Frigate вернул неполную запись')
+                    content_type = response.headers.get('content-type', '').partition(';')[0].lower()
+                    if content_type.startswith('text/') or content_type == 'application/json':
+                        raise ValueError('Frigate вернул ответ без видео')
+                    raw_length = response.headers.get('content-length')
+                    expected = int(raw_length) if raw_length is not None else None
+                    if expected is not None and not 0 < expected <= self.settings.max_upload:
+                        raise ValueError('Недопустимый размер записи Frigate')
+                    size = 0
+                    with temporary.open('wb') as handle:
+                        async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                            size += len(chunk)
+                            if size > self.settings.max_upload:
+                                raise ValueError('Видео превышает лимит загрузки')
+                            handle.write(chunk)
+                    if not size:
+                        raise ValueError('Frigate вернул пустую запись')
+                    # A content-coded response declares the length on the wire, not
+                    # the length of the decoded clip written to disk.
+                    encoded = response.headers.get('content-encoding', 'identity').lower() != 'identity'
+                    received = response.num_bytes_downloaded if encoded else size
+                    if expected is not None and received != expected:
+                        raise ValueError('Размер записи Frigate не совпадает с Content-Length')
             temporary.replace(path)
         finally:
             temporary.unlink(missing_ok=True)
@@ -716,40 +738,104 @@ class Engine:
         # Rolling jobs created before the module column existed were always fight-only.
         return requested & {job.get('rolling_module') or 'fight'} if job.get('clip_start') is not None else requested
 
-    def models_ready(self, job):
+    def models_ready(self, job, requested=None):
         analyzer = self.health['analyzer']
         ready = {m['id'] for m in analyzer.get('models', []) if m.get('state') == 'ready'}
-        requested = self.job_modules(job)
-        # Existing partial-analysis mode remains explicit in analyzer warnings.
-        # An unrelated ready model must never consume a single-module job.
+        if requested is None:
+            requested = self.job_modules(job)
+        # A partially available multi-module analyzer can still process a job.
         return analyzer.get('state') == 'ready' and any(ready & ACTION_MODELS[m] for m in requested)
 
-    async def work(self):
+    def claim_next_job(self):
+        now = time.time()
+        rows = self.store.rows("""SELECT * FROM jobs WHERE state='queued' AND updated<=?
+            ORDER BY (clip_start IS NOT NULL) DESC, created, rowid LIMIT 100""", (now,))
+        for job in rows:
+            modules = self.job_modules(job)
+            if not modules:
+                self.store.execute("""UPDATE jobs SET state='failed',error=?,updated=? WHERE id=? AND state='queued'""",
+                                   ('Модули анализа задания отключены. Включите модуль перед повтором.', now, job['id']))
+            elif self.models_ready(job, modules) and self.store.execute("""UPDATE jobs
+                    SET state='running',attempts=attempts+1,updated=? WHERE id=? AND state='queued' AND updated<=?""",
+                    (now, job['id'], now)):
+                return job
+        return None
+
+    def release_claim(self, job):
+        self.store.execute("""UPDATE jobs SET state='queued',attempts=MAX(0,attempts-1),updated=?
+            WHERE id=? AND state='running' AND attempts=?""", (time.time(), job['id'], job['attempts'] + 1))
+
+    async def prepare_clip(self, job):
+        path = self.settings.data / 'jobs' / (job.get('file') or (job['id'] + '.mp4'))
+        if not path.is_file():
+            if not job['source_id'] and job.get('clip_start') is None:
+                raise RuntimeError('Видео больше не доступно')
+            await self.download_clip(job, path)
+        if job.get('file') != path.name:
+            self.store.execute('UPDATE jobs SET file=? WHERE id=?', (path.name, job['id']))
+            job['file'] = path.name
+
+    async def next_prepared_job(self, analysis_finished=None):
         while True:
+            job = self.claim_next_job()
+            if job is None:
+                if analysis_finished is None or analysis_finished.is_set():
+                    await asyncio.sleep(1)
+                else:
+                    # Recheck at handoff even if a job arrived during the idle poll.
+                    try:
+                        await asyncio.wait_for(analysis_finished.wait(), timeout=1)
+                    except TimeoutError:
+                        pass
+                continue
             try:
-                rows = self.store.rows("SELECT * FROM jobs WHERE state='queued' AND updated < ? ORDER BY (clip_start IS NOT NULL) DESC, created LIMIT 100", (time.time() - 2,))
-                for row in rows:
-                    if not self.job_modules(row):
-                        self.store.execute("UPDATE jobs SET state='failed',error=?,updated=? WHERE id=? AND state='queued'",
-                                           ('Модули анализа задания отключены. Включите модуль перед повтором.',time.time(),row['id']))
-                rows = [row for row in rows if self.job_modules(row)]
-                job = next((row for row in rows if self.models_ready(row)), None)
-                if job:
-                    if self.store.execute("UPDATE jobs SET state='running',attempts=attempts+1,updated=? WHERE id=? AND state='queued'", (time.time(), job['id'])):
-                        await self.run_job(job)
+                # Uploads are already on disk. Only one NVR download is in progress at a time.
+                if job['source_id'] or job.get('clip_start') is not None:
+                    await self.prepare_clip(job)
+                return job
+            except asyncio.CancelledError:
+                self.release_claim(job)
+                raise
             except Exception as exc:
-                log.warning('Queue iteration failed: %s', type(exc).__name__)
-            await asyncio.sleep(1)
+                self.handle_job_error(job, exc)
+
+    async def work(self):
+        current = None
+        lookahead = None
+        try:
+            while True:
+                if lookahead is None:
+                    current = await self.next_prepared_job()
+                else:
+                    current = await lookahead
+                    lookahead = None
+                # The store's modules or the analyzer may have changed while the clip waited.
+                if not self.models_ready(current):
+                    self.release_claim(current)
+                    current = None
+                    continue
+                analysis_finished = asyncio.Event()
+                lookahead = asyncio.create_task(self.next_prepared_job(analysis_finished))
+                await self.run_job(current)
+                analysis_finished.set()
+                current = None
+        finally:
+            if lookahead is not None:
+                lookahead.cancel()
+                prepared, = await asyncio.gather(lookahead, return_exceptions=True)
+                if isinstance(prepared, dict):
+                    # Download completed, but this job never reached the analyzer.
+                    self.release_claim(prepared)
+            if current is not None:
+                self.release_claim(current)
 
     async def run_job(self, job):
-        path = self.settings.data / 'jobs' / (job.get('file') or (job['id'] + '.mp4'))
         try:
-            if not path.exists():
-                if not job['source_id'] and job.get('clip_start') is None:
-                    raise RuntimeError('Видео больше не доступно')
-                await self.download_clip(job, path)
-            self.store.execute('UPDATE jobs SET file=? WHERE id=?', (path.name, job['id']))
+            await self.prepare_clip(job)
             modules = self.job_modules(job)
+            if not modules:
+                self.release_claim(job)
+                return
             mode = 'fight' if job.get('clip_start') is not None and modules == {'fight'} else 'all'
             response = await self.client.post(self.settings.analyzer_url + '/analyze',
                 json={'job_id': job['id'], 'mode': mode, 'modules': sorted(modules)},
@@ -757,18 +843,22 @@ class Engine:
             response.raise_for_status()
             self.apply_result(job, response.json())
         except Exception as exc:
-            if isinstance(exc, httpx.TransportError) or (isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (429,503)):
-                self.store.execute("UPDATE jobs SET state='queued',attempts=MAX(0,attempts-1),error=?,updated=? WHERE id=?",
-                                   ('Сервис временно недоступен или занят. Ожидаем повтор.',time.time()+30,job['id']))
-                return
-            attempts = job['attempts'] + 1
-            message = 'Анализ недоступен или файл не поддерживается. Проверьте модели и видео.'
-            if attempts >= 3:
-                self.fail_job(job, message)
-            else:
-                self.store.execute("UPDATE jobs SET state='queued',error=?,updated=? WHERE id=?",
-                                   (message, time.time() + 30, job['id']))
-            log.warning('Analysis %s failed: %s', job['id'], type(exc).__name__)
+            self.handle_job_error(job, exc)
+
+    def handle_job_error(self, job, exc):
+        unavailable = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (429, 503)
+        if isinstance(exc, (httpx.TransportError, TimeoutError)) or unavailable:
+            self.store.execute("""UPDATE jobs SET state='queued',attempts=MAX(0,attempts-1),error=?,updated=?
+                WHERE id=? AND state IN ('queued','running')""",
+                ('Сервис временно недоступен или занят. Ожидаем повтор.', time.time()+30, job['id']))
+            return
+        message = 'Анализ недоступен или файл не поддерживается. Проверьте модели и видео.'
+        if job['attempts'] + 1 >= 3:
+            self.fail_job(job, message)
+        else:
+            self.store.execute("""UPDATE jobs SET state='queued',error=?,updated=?
+                WHERE id=? AND state IN ('queued','running')""", (message, time.time()+30, job['id']))
+        log.warning('Analysis %s failed: %s', job['id'], type(exc).__name__)
 
 
 def seed_demo(store):
