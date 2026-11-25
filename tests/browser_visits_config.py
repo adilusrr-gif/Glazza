@@ -1,4 +1,4 @@
-"""Commission a ten-camera directed shop graph through the real browser and API."""
+"""Commission two entrances and a ten-camera directed shop graph through the real browser and API."""
 from pathlib import Path
 import socket
 import tempfile
@@ -47,12 +47,23 @@ def main():
                         zones = [
                             {'name':'outside','restricted':False,'points':[[.05,.1],[.3,.1],[.3,.7]]},
                             {'name':'interior','restricted':False,'points':[[.5,.1],[.8,.1],[.8,.7]]},
-                        ] if i == 0 else []
+                        ] if i == 0 else [
+                            {'name':'south_entry','restricted':False,'points':[[.2,.1],[.6,.1],[.6,.6]]},
+                            {'name':'staff_only','restricted':True,'points':[[.2,.7],[.5,.7],[.5,.9]]}
+                        ] if i == 9 else []
                         response = context.request.post('/api/cameras', data={
                             'id':camera,'name':f'Камера {i}', 'site_id':site,'zones':zones,
                             'stream':f'rtsp://127.0.0.1/{camera}'}, headers=headers)
                         assert response.ok, response.text()
+                    legacy = context.request.put(endpoint, headers=headers, data={
+                        'entrance_camera':cameras[0], 'entrance_zone':'outside', 'inside_zone':'interior',
+                        'camera_ids':cameras[:2], 'transitions':[{'from_camera':cameras[0],'to_camera':cameras[1]}]})
+                    assert legacy.ok, legacy.text()
+                    legacy_view = legacy.json()['config']
+                    legacy_view.pop('entrances', None)
                     page = context.new_page()
+                    # A previous deployment returned only the three scalar entrance fields.
+                    page.route(url + endpoint, lambda route: route.fulfill(json={'config':legacy_view}), times=1)
                     errors = []
                     page.on('pageerror', lambda err: errors.append(str(err)))
                     page.goto('/')
@@ -60,30 +71,76 @@ def main():
                     page.locator('[data-nav=visits]').click()
                     page.locator('#visit-setup').click()
                     form = page.locator('#visit-config-form')
-                    form.locator('[name=entrance_camera]').select_option(cameras[0])
-                    form.locator('[name=entrance_zone]').select_option('outside')
-                    form.locator('[name=inside_zone]').select_option('interior')
-                    for index, camera in enumerate(cameras[1:]):
+                    doors = form.locator('[data-visit-entrances] > [role=group]')
+                    expect(doors).to_have_count(1)
+                    expect(doors.first.locator('[name=entrance_camera]')).to_have_value(cameras[0])
+                    expect(doors.first.locator('[name=inside_zone]')).to_have_value('interior')
+                    form.locator('[data-add-entrance]').click()
+                    second = doors.nth(1)
+                    second.locator('[name=entrance_camera]').select_option(cameras[0])
+                    second.locator('[name=entrance_zone]').select_option('outside')
+                    form.locator('[type=submit]').click()
+                    expect(form.locator('[data-visit-config-error]')).to_contain_text('отдельную камеру для каждого входа')
+                    second.locator('[name=entrance_camera]').select_option(cameras[9])
+                    expect(second.locator('[name=entrance_zone]')).to_have_value('')
+                    expect(second.locator('option[value=outside]')).to_have_count(0)
+                    expect(second.locator('option[value=staff_only]')).to_have_count(0)
+                    second.locator('[name=entrance_zone]').select_option('south_entry')
+                    expect(second.locator('[name=inside_zone] option[value=south_entry]')).to_have_count(0)
+                    # The second entrance reaches the final interior camera in reverse order.
+                    direction = [(cameras[i],cameras[i+1]) for i in range(8)] + [(cameras[9],cameras[8])]
+                    edges = form.locator('[data-visit-edges] fieldset')
+                    for index,(source,target) in enumerate(direction):
                         if index:
                             form.locator('[data-add-edge]').click()
-                        row = form.locator('fieldset').nth(index)
-                        row.locator('[data-from]').select_option(cameras[index])
-                        row.locator('[data-to]').select_option(camera)
+                        edges.nth(index).locator('[data-from]').select_option(source)
+                        edges.nth(index).locator('[data-to]').select_option(target)
                     form.locator('[type=submit]').click()
                     expect(page.locator('#modal')).not_to_be_visible()
                     found = context.request.get(endpoint).json()['config']
+                    expected_doors = [
+                        {'camera':cameras[0],'entrance_zone':'outside','inside_zone':'interior'},
+                        {'camera':cameras[9],'entrance_zone':'south_entry','inside_zone':None}
+                    ]
+                    assert found['entrances'] == expected_doors and found['state'] == 'active'
                     assert found['camera_ids'] == cameras and len(found['transitions']) == 9
-                    assert found['inside_zone'] == 'interior' and found['state'] == 'active'
+                    assert found['entrance_camera'] == cameras[0] and found['inside_zone'] == 'interior'
                     page.set_viewport_size({'width':390,'height':844})
                     page.locator('#visit-setup').click()
-                    expect(form.locator('fieldset')).to_have_count(9)
-                    expect(form.locator('[name=inside_zone]')).to_have_value('interior')
+                    expect(edges).to_have_count(9)
+                    expect(doors).to_have_count(2)
+                    expect(doors.first.locator('[name=inside_zone]')).to_have_value('interior')
+                    expect(second.locator('[name=entrance_camera]')).to_have_value(cameras[9])
+                    expect(second.locator('[name=entrance_zone]')).to_have_value('south_entry')
+                    expect(second.locator('[name=inside_zone]')).to_have_value('')
                     assert not page.evaluate('document.documentElement.scrollWidth > window.innerWidth')
+                    for _ in direction:
+                        edges.last.get_by_role('button',name='Удалить переход').click()
+                    form.locator('[type=submit]').click()
+                    expect(page.locator('#modal')).not_to_be_visible()
+                    isolated = context.request.get(endpoint).json()['config']
+                    assert isolated['entrances'] == expected_doors and isolated['transitions'] == []
+                    assert isolated['camera_ids'] == [cameras[0],cameras[9]]
+                    page.locator('#visit-setup').click()
+                    expect(edges).to_have_count(0)
+                    expect(doors).to_have_count(2)
+                    second.locator('[data-remove-entrance]').click()
+                    expect(doors).to_have_count(1)
+                    expect(doors.first.locator('[data-remove-entrance]')).not_to_be_visible()
+                    form.locator('[type=submit]').click()
+                    expect(form.locator('[data-visit-config-error]')).to_contain_text('добавьте переход')
+                    form.locator('[data-add-edge]').click()
+                    edges.first.locator('[data-from]').select_option(cameras[0])
+                    edges.first.locator('[data-to]').select_option(cameras[9])
+                    form.locator('[type=submit]').click()
+                    expect(page.locator('#modal')).not_to_be_visible()
+                    assert context.request.get(endpoint).json()['config']['entrances'] == expected_doors[:1]
+                    page.locator('#visit-setup').click()
                     form.locator('[data-disable-visits]').click()
                     expect(page.locator('#modal')).not_to_be_visible()
                     assert context.request.get(endpoint).json() == {'config':None}
                     assert not errors, errors
-                    print('PASS: 10 cameras, 9 directed transitions, entrance direction, save, mobile reopen and disable')
+                    print('PASS: legacy door preserved; 2 entrances, 10 cameras, 9 directed transitions; per-camera zones, duplicate prevention, mobile reopen, two independent entrances with no transitions, door removal and disable')
                     browser.close()
             finally:
                 server.should_exit = True

@@ -161,3 +161,63 @@ def test_reclassified_person_invalidates_existing_evidence_only(app, logged, cam
         monkeypatch.setattr(tracker,'invalidate_track',lambda *args: affected.append(args[1:]))
     engine.ingest([{**original,'id':'unknown','label':'cart'}, {**original,'label':'cart'}])
     assert affected == [(camera['id'], 'reclassified', 12, 20, 'default')]*2
+
+
+def test_each_entrance_checks_its_own_live_direction_zones(app, logged):
+    from app.frigate import make_config
+
+    store, engine = app.state.store, app.state.engine
+    site = logged.post('/api/platform/sites', json={
+        'organization_id':'default', 'name':'Два входа', 'profile':'retail', 'modules':['person'],
+    }).json()['id']
+    doors = ['north_door', 'south_door']
+    cameras = [*doors, 'hallway']
+    entrances = []
+    for camera in cameras:
+        zones = []
+        if camera in doors:
+            # Identical zone labels refer to different areas in these two views.
+            left = [[.1,.1],[.3,.1],[.3,.8],[.1,.8]]
+            right = [[.6,.1],[.8,.1],[.8,.8],[.6,.8]]
+            entrances.append({'camera':camera, 'entrance_zone':'doorway', 'inside_zone':'inside'})
+            zones = [
+                {'name':'doorway', 'restricted':False, 'points':left if camera == 'north_door' else right},
+                {'name':'inside', 'restricted':False, 'points':right if camera == 'north_door' else left},
+            ]
+        response = logged.post('/api/cameras', json={
+            'id':camera, 'name':camera, 'site_id':site, 'stream':f'rtsp://camera.local/{camera}', 'zones':zones,
+        })
+        assert response.status_code == 201, response.text
+
+    response = logged.put(f'/api/retail/visits/{site}/config', json={
+        'entrances':entrances, 'camera_ids':cameras, 'transitions':[
+            {'from_camera':camera, 'to_camera':'hallway', 'min_seconds':1, 'max_seconds':20} for camera in doors
+        ],
+    })
+    assert response.status_code == 200, response.text
+    source = store.cameras(private=True, site_id=site)
+    now = time.time()
+    for n, missing_interior in enumerate(['south_door', 'north_door', None]):
+        live = make_config(source)
+        for cam in live['cameras'].values():
+            cam['detect'].update(width=640, height=360)
+        if missing_interior == 'south_door':
+            del live['cameras']['south_door']['zones']['inside']
+        elif missing_interior == 'north_door':
+            # An unapplied zone change can retain the correct name with stale coordinates.
+            live['cameras']['north_door']['zones']['inside'] = live['cameras']['south_door']['zones']['inside']
+        stamp = now - 2 + n
+        stats = {
+            'service':{'last_updated':stamp},
+            'detectors':{'cpu':{'pid':123, 'detection_start':0}},
+            'cameras':{camera:{'camera_fps':5, 'process_fps':5, 'detection_enabled':True} for camera in cameras},
+        }
+        def dispatch(request):
+            return httpx.Response(200, json=stats if request.url.path == '/api/stats' else live)
+        engine.client = httpx.AsyncClient(transport=httpx.MockTransport(dispatch))
+        asyncio.run(engine.sync_camera_signals())
+        measured = store.rows('SELECT camera,healthy FROM retail_visit_health WHERE at=?', (stamp,))
+        assert {r['camera']: bool(r['healthy']) for r in measured} == {
+            camera: camera != missing_interior for camera in cameras
+        }
+        assert set(engine.retail_frame_shapes) == set(cameras) - {missing_interior}

@@ -94,3 +94,7 @@ dialog{background:#fff;color:var(--ink);border-color:#c8d7eb;box-shadow:0 30px 1
 .visit-timeline li>.visit-timeline-actions{display:flex;flex-wrap:wrap;justify-content:flex-end}
 .visit-path{margin:18px 0}.visit-path figcaption{display:grid;gap:4px;margin:0 0 8px;font-size:14px}.visit-path small{color:var(--muted)}
 .visit-path svg{display:block;width:100%;max-height:230px;background:#edf2f8;border:1px solid var(--line);border-radius:8px}
+
+[data-visit-entrances]>[role=group]{padding:13px 15px;margin-bottom:12px;border:1px solid var(--line);border-radius:8px;min-width:0}
+[data-visit-entrances] .section-heading{margin-bottom:0}
+[data-visit-entrances] .form-row>*{min-width:0}

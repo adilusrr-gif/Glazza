@@ -13,15 +13,22 @@ def rectangle(name, x):
 
 
 @pytest.fixture
-def flow(app, logged, monkeypatch):
+def flow(app, logged, monkeypatch, request):
     store = app.state.store
     start = int(time.time())
     site = logged.post(
         '/api/platform/sites', json={'name': 'Visits', 'profile': 'retail', 'organization_id': 'default'}
     ).json()['id']
-    cameras = ['door_cam', 'aisle_cam', 'next_cam']
+    mode = getattr(request, 'param', 'single')
+    cameras = ['door_cam', 'aisle_cam', 'next_cam'] if mode == 'single' else ['door_cam', 'side_cam']
+    if mode == 'converging':
+        cameras.append('aisle_cam')
+    door_zones = {
+        'door_cam': [rectangle('door', 0.1), rectangle('inside', 0.5)],
+        'side_cam': [rectangle('side_door', 0.1), rectangle('side_inside', 0.5)],
+    }
     for c in cameras:
-        zones = [rectangle('door', 0.1), rectangle('inside', 0.5)] if c == 'door_cam' else []
+        zones = door_zones.get(c, [])
         assert logged.post(
             '/api/cameras',
             json={'id': c, 'name': c, 'site_id': site, 'zones': zones, 'stream': 'rtsp://demo/' + c},
@@ -37,7 +44,21 @@ def flow(app, logged, monkeypatch):
             for a, b in itertools.pairwise(cameras)
         ],
     }
-    assert logged.put('/api/retail/visits/' + site + '/config', json=rule).is_success
+    if mode != 'single':
+        for field in ('entrance_camera', 'entrance_zone', 'inside_zone'):
+            del rule[field]
+        rule['entrances'] = [
+            {'camera': 'door_cam', 'entrance_zone': 'door', 'inside_zone': 'inside'},
+            {'camera': 'side_cam', 'entrance_zone': 'side_door', 'inside_zone': 'side_inside'},
+        ]
+        if mode == 'independent':
+            rule['transitions'] = []
+        else:
+            rule['transitions'].append(
+                {'from_camera': 'door_cam', 'to_camera': 'aisle_cam', 'min_seconds': 1, 'max_seconds': 30}
+            )
+    resp = logged.put('/api/retail/visits/' + site + '/config', json=rule)
+    assert resp.is_success, resp.text
     camera_by_id = {c['id']: c for c in store.cameras()}
     for step in range(0, 121, 5):
         for c in cameras:
@@ -172,3 +193,105 @@ def test_frigate_telemetry_jitter_and_one_missed_report():
     assert visits._healthy([True, True], [100, 117], 103, 119)
     assert not visits._healthy([True, True], [100, 134], 103, 135)
     assert not visits._healthy([True, False], [100, 117], 103, 119)
+
+
+@pytest.mark.parametrize('flow', ['independent'], indirect=True)
+def test_two_independent_doors_keep_stable_ids_without_camera_transitions(flow):
+    store, site, start, ingest, assign = flow
+    north = ('north-arrival', 'door_cam', 2, 9, None, ['door', 'inside'], [(0.2, 4), (0.6, 7)])
+    east = ('east-arrival', 'side_cam', 2, 9, None, ['side_inside', 'side_door'], [(0.2, 4), (0.6, 7)])
+    for args in (east, north):
+        ingest(*args)
+    assert visits.snapshot_jobs(store, start + 9, 20) == []
+    assign(9)
+    results = visits.list_visits(store, site, start + 9)
+    assert sorted((v['entrance_camera'], v['entrance_zone'], v['active_camera']) for v in results) == [
+        ('door_cam', 'door', 'door_cam'),
+        ('side_cam', 'side_door', 'side_cam'),
+    ]
+    ids = {v['id'] for v in results}
+    assert len(ids) == 2
+    assert visits.configured_zones(store) == {
+        'door_cam': {'door', 'inside'},
+        'side_cam': {'side_door', 'side_inside'},
+    }
+    # Replaying the input or seeing a customer walk out by the other door does not add a visit.
+    for args in (north, east):
+        ingest(*args)
+    ingest('east-outbound', 'side_cam', 10, 19, 19, ['side_door', 'side_inside'], [(0.6, 11), (0.2, 17)])
+    ingest('wrong-zones', 'side_cam', 21, 25, 25, ['door', 'inside'], [(0.2, 22), (0.6, 24)])
+    assign(27)
+    assert {v['id'] for v in visits.list_visits(store, site, start + 27)} == ids
+
+
+@pytest.mark.parametrize('flow', ['converging'], indirect=True)
+def test_arrival_through_other_door_starts_own_visit_and_retracts_ambiguous_link(flow):
+    store, site, start, ingest, assign = flow
+    north = ('north-in', 'door_cam', 2, 10, 10, ['door', 'inside'], [(0.2, 3), (0.6, 6)])
+    east = ('east-in', 'side_cam', 3, 11, 11, ['side_door', 'side_inside'], [(0.2, 5), (0.6, 7)])
+    ingest(*north)
+    ingest('middle', 'aisle_cam', 16, 18)
+    assign(18)
+    (prior,) = visits.list_visits(store, site, start + 18)
+    assert prior['active_camera'] == 'aisle_cam' and prior['entrance_camera'] == 'door_cam'
+    # A late arrival record from the independent door is a second plausible origin for the aisle.
+    ingest(*east)
+    assign(18)
+    results = visits.list_visits(store, site, start + 18)
+    assert len(results) == 2 and len({v['id'] for v in results}) == 2
+    assert {r['entrance_camera'] for r in results} == {'door_cam', 'side_cam'}
+    assert prior['id'] in {r['id'] for r in results}
+    for r in results:
+        assert r['active_camera'] is None and r['status'] == 'uncertain'
+        timeline = visits.get_visit(store, site, r['id'], start + 18)['timeline']
+        assert [t['role'] for t in timeline] == ['entrance']
+
+
+@pytest.mark.parametrize('flow', ['converging'], indirect=True)
+@pytest.mark.parametrize('inward', [True, False], ids=['new-entry', 'outbound-observation'])
+def test_another_door_view_waits_for_direction_before_handing_off(flow, inward):
+    store, site, start, ingest, assign = flow
+    ingest('first', 'door_cam', 2, 10, 10, ['door', 'inside'], [(0.2, 3), (0.6, 7)])
+    ingest('at-side', 'side_cam', 17, 18)
+    assign(18)
+    (original,) = visits.list_visits(store, site, start + 18)
+    assert original['active_camera'] is None and original['observations'] == 1
+    points = [(0.2, 20), (0.6, 24)] if inward else [(0.6, 20), (0.2, 24)]
+    ingest('at-side', 'side_cam', 17, 24, zones=['side_door', 'side_inside'], points=points)
+    assign(24)
+    results = visits.list_visits(store, site, start + 24)
+    (visible,) = [r for r in results if r['active_camera'] == 'side_cam']
+    if inward:
+        assert len(results) == 2 and visible['id'] != original['id']
+        assert visible['entrance_camera'] == 'side_cam' and visible['observations'] == 1
+    else:
+        assert len(results) == 1 and visible['id'] == original['id']
+        timeline = visits.get_visit(store, site, original['id'], start + 24)['timeline']
+        assert [(t['camera'], t['role']) for t in timeline] == [
+            ('door_cam', 'entrance'),
+            ('side_cam', 'observation'),
+        ]
+
+
+def test_repolling_two_cumulative_zones_without_order_does_not_prove_entry(flow):
+    store, site, start, ingest, _ = flow
+    ingest('incomplete', 'door_cam', 2, 7, zones=['door', 'inside'], points=[(0.2, 5)])
+    ingest('incomplete', 'door_cam', 2, 10, zones=['door', 'inside'], points=[(0.21, 8)])
+    assert visits.list_visits(store, site, start + 10) == []
+    # The interior point arrives later in a partial path; retained capture times now establish direction.
+    ingest('incomplete', 'door_cam', 2, 12, zones=['door', 'inside'], points=[(0.6, 12)])
+    (row,) = visits.list_visits(store, site, start + 12)
+    assert row['started_at'] == start + 12
+
+
+def test_contradicted_interior_sample_remains_unresolved_after_display_history_rolls_off(flow):
+    store, site, start, ingest, assign = flow
+    ingest('contradiction', 'door_cam', 2, 9, zones=['door'])
+    # Interior point at t=5 contradicts the claim that only the door had been
+    # visited by t=9. No geometric door observation precedes that point.
+    ingest('contradiction', 'door_cam', 2, 11, zones=['door', 'inside'], points=[(0.6, 5)])
+    for at in range(12, 50):
+        ingest('contradiction', 'door_cam', 2, at, zones=['door', 'inside'], points=[(0.21, at)])
+    ingest('contradiction', 'door_cam', 2, 50, zones=['door', 'inside'], points=[(0.61, 50)])
+    assign()
+    assert visits.list_visits(store, site, start + 50) == []

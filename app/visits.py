@@ -16,6 +16,10 @@ HISTORY_SECONDS = 24 * 3600
 POSITION_FRESH_SECONDS = 15
 # Frigate publishes statistics roughly every 15 seconds, plus collection overhead.
 HEALTH_GAP_SECONDS = 20
+# Persisted track phases. Unordered evidence can gain a measured direction; a
+# contradicted entrance cannot become a new visit when old path points roll off.
+NO_ENTRY, DOOR_ONLY, ENTERED = 0, 1, 2
+OUTBOUND, UNORDERED, CONTRADICTED = -1, -2, -3
 
 
 def initialize(store):
@@ -48,12 +52,13 @@ def configured_cameras(store):
 
 
 def configured_zones(store):
-    return {
-        r['entrance_camera']: {n for n in [r['entrance_zone'], r['inside_zone']] if n}
-        for r in store.rows(
-            "SELECT entrance_camera,entrance_zone,inside_zone FROM retail_visit_configs WHERE state='active'"
-        )
-    }
+    zones = defaultdict(set)
+    for row in store.rows("SELECT * FROM retail_visit_configs WHERE state='active'"):
+        for entry in visits_config.configured_entrances(row):
+            zones[entry['camera']].add(entry['entrance_zone'])
+            if entry['inside_zone']:
+                zones[entry['camera']].add(entry['inside_zone'])
+    return dict(zones)
 
 
 def finite(x):
@@ -84,38 +89,42 @@ def path_points(raw, started, cutoff):
     return points
 
 
-def entry_state(config, camera, zones, points, phase, seen, previous_seen):
-    entrance, inside = config['entrance_zone'], config['inside_zone']
-    if camera['id'] != config['entrance_camera'] or phase in (-1, 2):
+def entry_state(door, camera, zones, points, phase, seen, previous_seen):
+    if door is None or phase in (OUTBOUND, ENTERED, CONTRADICTED):
         return phase, None
+    entrance, inside = door['entrance_zone'], door['inside_zone']
     polygons = {z['name']: z['points'] for z in camera['zones']}
     if entrance not in polygons or (inside and inside not in polygons):
         return phase, None
     if inside is None:
         if entrance in zones:
             at = next((t for p, t in points if _inside(p, polygons[entrance])), seen)
-            return 2, at
+            return ENTERED, at
         return phase, None
-    # Prefer capture-time observations; never derive order from the zones array.
-    prior_door = phase == 1
-    door_in_path = False
-    for p, at in points:
-        if inside in zones and _inside(p, polygons[inside]):
-            # A late, complete path can reveal interior before the previously
-            # reported door. Arrival order of HTTP updates is not capture order.
-            if not door_in_path and (not prior_door or at <= previous_seen):
-                return -1, None
-            return 2, at
-        if entrance in zones and _inside(p, polygons[entrance]):
-            door_in_path = True
-            phase = 1
-    if prior_door and seen > previous_seen and inside in zones and entrance in zones:
-        return 2, seen
-    if inside in zones and entrance not in zones:
-        return -1, None
-    if entrance in zones and inside not in zones:
-        phase = 1
-    return phase, None
+    if inside not in zones or entrance not in zones:
+        if phase == UNORDERED:  # A regressing cumulative list supplies no new order.
+            return phase, None
+        if inside in zones:
+            return OUTBOUND, None
+        return (DOOR_ONLY if entrance in zones else phase), None
+
+    # Prefer ordered capture timestamps. When both zones are already present and
+    # their order is missing, re-polling the same names cannot establish direction.
+    door_at = next((t for p, t in points if _inside(p, polygons[entrance])), None)
+    inside_at = next((t for p, t in points if _inside(p, polygons[inside])), None)
+    if inside_at is not None:
+        if door_at is not None and door_at < inside_at:
+            return ENTERED, inside_at
+        if phase == DOOR_ONLY:
+            if inside_at > previous_seen:
+                return ENTERED, inside_at
+            return CONTRADICTED, None
+        # An interior sample without an earlier door witness cannot establish
+        # entry. Keep this evidence beyond the display path's 32-point window.
+        return (OUTBOUND if door_at is not None else CONTRADICTED), None
+    if phase == DOOR_ONLY:
+        return (ENTERED, seen) if seen > previous_seen else (phase, None)
+    return UNORDERED, None
 
 
 def observe(store, camera, event, origin_event_id, site_id):
@@ -180,16 +189,25 @@ def observe(store, camera, event, origin_event_id, site_id):
             or (old['ended'] is not None and end is None)
         ):
             return
-        phase = old['entry_phase'] if old else 0
-        phase, entry = entry_state(
-            config, camera, entered, points, phase, seen, old['last_seen'] if old else start
+        door = next(
+            (d for d in visits_config.configured_entrances(config) if d['camera'] == camera['id']), None
         )
-        zone = config['entrance_zone'] if phase == 2 else None
-        # Frigate may resend a cumulative path or just the newest points. Keep
-        # actual capture times across both shapes; never interpolate missing motion.
+        # Frigate may resend a cumulative path or just the newest points. Retain
+        # measured history for direction checks, also when the zone list lags a frame.
         history = {at: xy for xy, at in json.loads(old['path'])} if old else {}
-        history.update({at: xy for xy, at in points[-32:]})
-        stored_path = json.dumps([[history[at], at] for at in sorted(history)[-32:]])
+        history.update({at: xy for xy, at in points})
+        ordered_path = [[history[at], at] for at in sorted(history)]
+        phase, entry = entry_state(
+            door,
+            camera,
+            entered,
+            ordered_path,
+            old['entry_phase'] if old else NO_ENTRY,
+            seen,
+            old['last_seen'] if old else start,
+        )
+        zone = door['entrance_zone'] if phase == ENTERED else None
+        stored_path = json.dumps(ordered_path[-32:])
         key = old['origin_event'] if old else origin_event_id
         changed = db.execute(
             """INSERT INTO retail_visit_tracks
@@ -233,7 +251,7 @@ def snapshot_jobs(store, now, limit):
     rows = store.rows(
         """SELECT t.origin_event,t.camera,t.site_id,t.source_id,t.started,t.snapshot_at,t.ended,t.box,t.generation
         FROM retail_visit_tracks t JOIN retail_visit_configs c ON t.site_id=c.site_id AND t.generation=c.activated_at
-        WHERE c.state='active' AND t.invalid=0 AND t.signature IS NULL AND t.last_seen>=? AND t.retry_at<=?
+        WHERE c.state='active' AND json_array_length(c.transitions)>0 AND t.invalid=0 AND t.signature IS NULL AND t.last_seen>=? AND t.retry_at<=?
         AND (t.ended IS NULL OR t.box IS NOT NULL)
         ORDER BY t.retry_at,t.last_seen DESC,t.origin_event LIMIT ?""",
         (now - IDLE_SECONDS, now, limit),
@@ -315,8 +333,11 @@ def _assign(db, config, now):
     # Only the recent window can grow. Stable older observations remain timeline anchors
     # when a shopper continues moving through the store for longer than one idle period.
     edges = json.loads(config['transitions'])
+    if not edges:
+        return  # Independent entrances issue IDs without appearance matching.
     oldest = now - IDLE_SECONDS
     buffer = max(step['max_seconds'] for step in edges)
+    entrance_cameras = {d['camera'] for d in visits_config.configured_entrances(config)}
     rows = [
         dict(r)
         for r in db.execute(
@@ -362,8 +383,16 @@ def _assign(db, config, now):
                 appearance = compare_clothing(signatures[p], signatures[q])
                 if appearance == 'incompatible':
                     continue
+                # A track in another doorway could still prove a new inward crossing.
+                # Outbound tracks and completed non-entry tracks can carry a previous visit.
+                unresolved_entry = dest in entrance_cameras and (
+                    target['entry_phase'] in (UNORDERED, CONTRADICTED)
+                    or target['ended'] is None
+                    and target['entry_phase'] in (NO_ENTRY, DOOR_ONLY)
+                )
                 ok = (
-                    appearance == 'compatible'
+                    not unresolved_entry
+                    and appearance == 'compatible'
                     and source['ended'] is not None
                     and not source['invalid']
                     and not target['invalid']
@@ -448,9 +477,12 @@ def _summaries(db, site_id, now, limit, visit_id=None, active_only=False):
         )
         args.append(now - IDLE_SECONDS)
     sql = f"""WITH sightings AS (SELECT v.*,t.camera,t.last_seen,t.ended,t.invalid,t.ambiguous,c.state,
+        origin.camera AS entrance_camera,origin.zone AS entrance_zone,
         c.activated_at current_generation, COUNT(*) OVER(PARTITION BY v.id) observations,
         ROW_NUMBER() OVER(PARTITION BY v.id ORDER BY t.started DESC,t.last_seen DESC,t.origin_event) AS n
-        FROM retail_visits v JOIN retail_visit_tracks t ON t.visit_id=v.id LEFT JOIN retail_visit_configs c ON c.site_id=v.site_id
+        FROM retail_visits v JOIN retail_visit_tracks t ON t.visit_id=v.id
+        JOIN retail_visit_tracks origin ON origin.origin_event=v.entrance_event AND origin.site_id=v.site_id
+        LEFT JOIN retail_visit_configs c ON c.site_id=v.site_id
         WHERE {' AND '.join(conditions)}) SELECT s.*, (SELECT healthy FROM retail_visit_health h
          WHERE h.camera=s.camera AND h.at BETWEEN ? AND ? ORDER BY h.at DESC LIMIT 1) healthy
         FROM sightings s WHERE s.n=1 ORDER BY s.last_seen DESC,s.id LIMIT ?"""
@@ -476,6 +508,8 @@ def _summaries(db, site_id, now, limit, visit_id=None, active_only=False):
                 'site_id': site_id,
                 'started_at': r['started_at'],
                 'last_seen_at': r['last_seen'],
+                'entrance_camera': r['entrance_camera'],
+                'entrance_zone': r['entrance_zone'],
                 'last_camera': r['camera'],
                 'status': status,
                 'active_camera': r['camera'] if status == 'observed' else None,
@@ -507,7 +541,7 @@ def get_visit(store, site_id, visit_id, now):
                 'camera': r['camera'],
                 'zone': r['zone'],
                 'origin_event': r['origin_event'],
-                'role': 'entrance' if r['entry_phase'] == 2 else 'observation',
+                'role': 'entrance' if r['entry_phase'] == ENTERED else 'observation',
                 'started_at': r['started'],
                 'last_seen_at': r['last_seen'],
                 'ended_at': r['ended'],

@@ -38,7 +38,7 @@ function renderVisits() {
   }
   if (visitScreen?.siteId === site.id && visitScreen.panel.isConnected) return;
   stopVisitMonitor();
-  $('#content').innerHTML = head('Визиты посетителей', 'На входе система выдаёт временный ID визита. Переход между камерами оценивается по цвету одежды и времени в пути. При неоднозначном совпадении проверьте записи камер.', '<button class="secondary" data-nav="overview">В обзор</button><button class="primary" id="visit-setup">Камеры и переходы</button>') +
+  $('#content').innerHTML = head('Визиты посетителей', 'При входе через любую настроенную дверь система выдаёт временный ID визита. Переход между камерами оценивается по цвету одежды и времени в пути. При неоднозначном совпадении проверьте записи камер.', '<button class="secondary" data-nav="overview">В обзор</button><button class="primary" id="visit-setup">Камеры и переходы</button>') +
     `<section id="visit-monitor"><div class="visit-toolbar"><div role="group" aria-label="Фильтр визитов">
        <button class="secondary" data-visit-filter="active" aria-pressed="true">Активные</button>
        <button class="secondary" data-visit-filter="all" aria-pressed="false">Все визиты</button></div>
@@ -69,7 +69,7 @@ function renderVisits() {
   }
 
   function visitRows(visits, configured) {
-    if (!visits.length) return empty(configured ? screen.active ? 'Активных визитов пока нет' : 'Визитов пока нет' : 'Сначала настройте входную камеру и переходы');
+    if (!visits.length) return empty(configured ? screen.active ? 'Активных визитов пока нет' : 'Визитов пока нет' : 'Сначала настройте входы и переходы');
     return visits.map(visit => {
       const camera = visit.active_camera || visit.last_camera;
       const cameraLabel = camera ? escapeHTML(cameraName(camera)) : 'Камера неизвестна';
@@ -84,6 +84,7 @@ function renderVisits() {
     const camera = liveCamera || visit.last_camera;
     const cameraInSite = liveCamera && state.cameras.some(item => item.id === liveCamera && item.site_id === site.id);
     const observations = visit.timeline || [];
+    const entrance = observations.find(item => item.role === 'entrance');
     const selected = observations.find(item => item.origin_event && item.origin_event === screen.selectedPath);
     const path = visitPath(visit.id, selected || observations[observations.length - 1]);
     const timeline = observations.map(item => {
@@ -93,7 +94,7 @@ function renderVisits() {
         ${item.has_clip && item.origin_event ? `<button class="text-button" data-visit-clip="${escapeHTML(item.origin_event)}">Запись</button>` : ''}</div></li>`;
     }).join('');
     return `<h2 class="visit-id">ID ${escapeHTML(visit.id)}</h2>${pill(visitStatuses[visit.status] || visit.status, visit.status === 'uncertain' ? 'warning' : 'neutral')}
-      <p>${liveCamera ? 'Текущая камера' : 'Последняя камера'} · <strong>${escapeHTML(camera ? cameraName(camera) : '—')}</strong><br>
+      <p>${entrance?.camera ? `<span data-visit-origin>Вход · <strong>${escapeHTML(cameraName(entrance.camera))}</strong></span><br>` : ''}${liveCamera ? 'Текущая камера' : 'Последняя камера'} · <strong>${escapeHTML(camera ? cameraName(camera) : '—')}</strong><br>
       Последнее наблюдение · ${visitTime(visit.last_seen_at)}</p>
       ${cameraInSite ? `<button type="button" class="secondary" data-visit-camera="${escapeHTML(liveCamera)}">Открыть кадр камеры</button>` : ''}
       ${path}<h3>Маршрут визита</h3><ol class="visit-timeline">${timeline}</ol>`;
@@ -110,7 +111,7 @@ function renderVisits() {
       const visits = data.visits || [];
       interval = Number.isFinite(data.poll_seconds) ? Math.max(1, Math.min(30, data.poll_seconds)) : 5;
       if (!visits.some(visit => visit.id === screen.selected)) screen.selected = visits[0]?.id || null;
-      const message = !data.configured ? 'Задайте зону входа и направления переходов между камерами.'
+      const message = !data.configured ? 'Укажите входы магазина и направления переходов между камерами.'
         : data.state === 'invalidated' ? 'Отслеживание приостановлено. Проверьте камеры и переходы.' : '';
       alert.hidden = !message;
       alert.textContent = message;

@@ -144,3 +144,111 @@ def test_migrate_legacy_visit_graph_preserves_generation_and_rows(tmp_path):
     initialize(store)
     row, = store.rows('SELECT * FROM retail_visit_configs')
     assert row['inside_zone'] is None and row['activated_at'] == 321.5 and row['state'] == 'active'
+
+
+@pytest.fixture
+def multiple_entrances(graph, logged, camera):
+    site, path, legacy = graph
+    door_zone = {'name':'entry_area', 'restricted':False, 'points':[[.1,.1],[.3,.1],[.3,.4],[.1,.4]]}
+    inside = {'name':'inner', 'restricted':False, 'points':[[.6,.2],[.8,.2],[.8,.8],[.6,.8]]}
+    for cam, zones in [('side_cam',[door_zone, inside]), ('side_hall',[])]:
+        assert logged.post('/api/cameras', json={**camera,'id':cam,'site_id':site,'zones':zones}).is_success
+    secondary = dict(camera='side_cam', entrance_zone='entry_area', inside_zone='inner')
+    primary = dict(camera='entry_cam', entrance_zone='entry_area', inside_zone=None)
+    cameras = legacy['camera_ids'] + ['side_cam','side_hall']
+    edges = [*legacy['transitions'], {'from_camera':'side_cam','to_camera':'side_hall'}]
+    return path, dict(entrances=[primary, secondary], camera_ids=cameras, transitions=edges)
+
+
+def test_multiple_entrance_components_retries_restart_and_legacy_writes(multiple_entrances, logged, app, settings):
+    path, full = multiple_entrances
+    written = logged.put(path, json=full)
+    assert written.is_success, written.text
+    saved = written.json()['config']
+    assert saved['entrances'] == full['entrances']
+    assert (saved['entrance_camera'], saved['entrance_zone'], saved['inside_zone']) == ('entry_cam','entry_area',None)
+    assert logged.put(path, json=full).json()['config'] == saved
+    restart = create_app(settings, background=False)
+    assert decode(restart.state.store.rows('SELECT * FROM retail_visit_configs')[0]) == saved
+    legacy = {k:saved[k] for k in ('entrance_camera','entrance_zone','inside_zone','camera_ids','transitions')}
+    assert logged.put(path, json=legacy).json()['config'] == saved
+    changed = {**legacy,'transitions':legacy['transitions'] + [{'from_camera':'side_hall','to_camera':'side_cam'}]}
+    assert logged.put(path, json=changed).json()['config']['entrances'] == full['entrances']
+    dropping_camera = {**legacy,'camera_ids':legacy['camera_ids'][:3],
+                       'transitions':[e for e in legacy['transitions'] if 'side_' not in e['from_camera']]}
+    assert logged.put(path, json=dropping_camera).status_code == 422
+    singleton = {**dropping_camera,'entrances':full['entrances'][:1]}
+    last = logged.put(path, json=singleton)
+    assert last.is_success, last.text
+    assert last.json()['config']['entrances'] == full['entrances'][:1]
+    assert last.json()['config']['activated_at'] > saved['activated_at']
+
+
+@pytest.mark.parametrize('issue', ['island','repeat_camera','outside_graph','missing_zone','conflict','empty','missing_primary'])
+def test_invalid_entrances_do_not_disturb_active_generation(multiple_entrances, logged, issue):
+    import copy
+    path, graph = multiple_entrances
+    saved = logged.put(path, json=graph).json()['config']
+    body = copy.deepcopy(graph)
+    if issue == 'island':
+        body['transitions'].pop()
+    elif issue == 'repeat_camera':
+        body['entrances'][1]['camera'] = body['entrances'][0]['camera']
+    elif issue == 'outside_graph':
+        body['entrances'][1]['camera'] = 'absent'
+    elif issue == 'missing_zone':
+        body['entrances'][1]['inside_zone'] = 'absent'
+    elif issue == 'conflict':
+        body['entrance_camera'] = 'side_cam'
+    elif issue == 'empty':
+        body['entrances'] = []
+    else:
+        del body['entrances']
+    assert logged.put(path, json=body).status_code == 422
+    assert logged.get(path).json()['config'] == saved
+
+
+def test_backfill_legacy_rows_remains_idempotent_for_both_zone_versions(tmp_path):
+    import json
+    from app.store import Store
+    from app.visits_config import configured_entrances, initialize
+
+    store = Store(tmp_path)
+    with store.connect() as db:
+        db.execute("""CREATE TABLE retail_visit_configs (site_id TEXT PRIMARY KEY, entrance_camera TEXT NOT NULL,
+            entrance_zone TEXT NOT NULL,inside_zone TEXT,camera_ids TEXT,transitions TEXT,activated_at REAL,
+            state TEXT,reason TEXT)""")
+        db.executemany('INSERT INTO retail_visit_configs VALUES(?,?,?,?,?,?,?,?,?)', [
+            ('a','cam_a','outer','inner','["cam_a","cam_b"]','[]',12.5,'active',None),
+            ('b','cam_b','door',None,'["cam_b","cam_c"]','[]',16.5,'invalidated','camera_changed')])
+    initialize(store)
+    initialize(store)
+    first, second = store.rows('SELECT * FROM retail_visit_configs ORDER BY site_id')
+    assert (first['activated_at'],first['state'],first['reason']) == (12.5,'active',None)
+    assert json.loads(first['entrances']) == [{'camera':'cam_a','entrance_zone':'outer','inside_zone':'inner'}]
+    assert (second['activated_at'],second['state'],second['reason']) == (16.5,'invalidated','camera_changed')
+    assert configured_entrances(second) == configured_entrances(decode(second)) == [
+        {'camera':'cam_b','entrance_zone':'door','inside_zone':None}]
+
+
+def test_reordering_entrances_updates_primary_alias_without_changing_tracking_generation(multiple_entrances, logged):
+    path, body = multiple_entrances
+    first = logged.put(path, json=body).json()['config']
+    reverse = {**body, 'entrances': list(reversed(body['entrances']))}
+    reordered = logged.put(path, json=reverse).json()['config']
+    assert reordered['activated_at'] == first['activated_at']
+    assert reordered['entrances'] == reverse['entrances']
+    assert reordered['entrance_camera'] == 'side_cam' and reordered['inside_zone'] == 'inner'
+    assert logged.get(path).json()['config'] == reordered
+    legacy = {k: reordered[k] for k in ('entrance_camera','entrance_zone','inside_zone','camera_ids','transitions')}
+    assert logged.put(path, json=legacy).json()['config'] == reordered
+
+
+def test_only_entrances_can_operate_as_independent_cameras_without_transitions(multiple_entrances, logged):
+    path, body = multiple_entrances
+    doors_only = {**body, 'camera_ids':['entry_cam','side_cam'], 'transitions':[]}
+    saved = logged.put(path, json=doors_only)
+    assert saved.is_success, saved.text
+    assert saved.json()['config']['transitions'] == []
+    assert logged.put(path, json={**doors_only, 'camera_ids':[*doors_only['camera_ids'], 'side_hall']}).status_code == 422
+    assert logged.get(path).json() == saved.json()
