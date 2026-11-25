@@ -38,7 +38,7 @@ class Store:
             ''')
             columns = {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}
             job_columns = {'clip_start':'REAL', 'clip_end':'REAL', 'event_id':'TEXT', 'source_id':'TEXT',
-                           'attempts':'INTEGER NOT NULL DEFAULT 0', 'error':'TEXT', 'result':'TEXT'}
+                           'attempts':'INTEGER NOT NULL DEFAULT 0', 'error':'TEXT', 'result':'TEXT', 'rolling_module':'TEXT'}
             for name, definition in job_columns.items():
                 if name not in columns:
                     db.execute(f'ALTER TABLE jobs ADD COLUMN {name} {definition}')
@@ -49,6 +49,7 @@ class Store:
                 if name not in camera_columns:
                     db.execute(f'ALTER TABLE cameras ADD COLUMN {name} REAL')
             migrate(db)
+            db.execute("CREATE INDEX IF NOT EXISTS analysis_overlap ON events(site_id,camera,kind) WHERE source='analysis'")
         self.path.chmod(0o600)
 
     @contextlib.contextmanager
@@ -76,7 +77,7 @@ class Store:
         self.execute('INSERT INTO audit(at,actor,action,subject,detail) VALUES(?,?,?,?,?)', (time.time(), actor, action, subject, detail))
 
     def enqueue(self, *, id, camera, site_id, event_id=None, source_id=None,
-                file=None, clip_start=None, clip_end=None, now=None):
+                file=None, clip_start=None, clip_end=None, rolling_module=None, now=None):
         """Serialize all producers, including uploads, against one pending-job limit."""
         now = time.time() if now is None else now
         with self.connect() as db:
@@ -85,9 +86,9 @@ class Store:
                 return True  # Idempotent ingestion, even while the queue is full.
             if db.execute("SELECT count(*) FROM jobs WHERE state IN ('queued','running')").fetchone()[0] >= 100:
                 return False
-            db.execute('''INSERT INTO jobs(id,camera,site_id,event_id,source_id,file,clip_start,clip_end,state,created,updated)
-                VALUES(?,?,?,?,?,?,?,?, 'queued',?,?)''',
-                (id,camera,site_id,event_id,source_id,file,clip_start,clip_end,now,now))
+            db.execute('''INSERT INTO jobs(id,camera,site_id,event_id,source_id,file,clip_start,clip_end,rolling_module,state,created,updated)
+                VALUES(?,?,?,?,?,?,?,?,?, 'queued',?,?)''',
+                (id,camera,site_id,event_id,source_id,file,clip_start,clip_end,rolling_module,now,now))
             return True
 
     def retry_job(self, identifier):
@@ -99,10 +100,10 @@ class Store:
                                  (time.time(),identifier)).rowcount
             return 'queued' if changed else 'unavailable'
 
-    def event(self, *, source_id, source, camera, kind, score, started, ended=None, details=None, site_id=None):
+    def event(self, *, source_id, source, camera, kind, score, started, ended=None, details=None, site_id=None, connection=None):
         identifier = hashlib.sha256(f'{source}:{source_id}:{kind}'.encode()).hexdigest()[:32]
         site_id = site_id or camera_site(self, camera)
-        with self.connect() as db:
+        with (contextlib.nullcontext(connection) if connection is not None else self.connect()) as db:
             db.execute('''INSERT INTO events(id,source_id,source,camera,kind,score,started,ended,details,site_id) VALUES(?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(source,source_id,kind) DO UPDATE SET ended=excluded.ended, score=excluded.score, details=excluded.details''',
                 (identifier, source_id, source, camera, kind, score, started, ended, json.dumps(details or {}, ensure_ascii=False), site_id))
@@ -117,9 +118,9 @@ class Store:
                 item.pop('stream')
         return items
 
-    def events(self, status=None, kind=None, camera=None, limit=100, site_id=None):
+    def events(self, status=None, kind=None, camera=None, limit=100, site_id=None, source=None):
         filters, args = [], []
-        for name, value in [('status', status), ('kind', kind), ('camera', camera), ('site_id', site_id)]:
+        for name, value in [('status', status), ('kind', kind), ('camera', camera), ('site_id', site_id), ('source', source)]:
             if value:
                 filters.append(f'{name}=?')
                 args.append(value)

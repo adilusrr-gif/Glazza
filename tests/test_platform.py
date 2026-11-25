@@ -125,8 +125,10 @@ def test_worker_does_not_run_unrequested_face_or_fight(monkeypatch,tmp_path):
     import analyzer.main as worker
     calls=[]
     class Vad:
+        theft_samples = 2
+        theft_threshold = .75
         def __init__(self,root):pass
-        def analyze(self,frames):
+        def analyze(self,frames,times,duration):
             calls.append('theft')
             return [{'kind':'theft','score':.9},{'kind':'fight','score':.95}]
     class Face:
@@ -142,7 +144,7 @@ def test_worker_does_not_run_unrequested_face_or_fight(monkeypatch,tmp_path):
     monkeypatch.setattr(worker,'FaceModel',Face)
     monkeypatch.setattr(worker,'FightModel',Fight)
     monkeypatch.setattr(worker,'IdentityModel',Identity)
-    monkeypatch.setattr(worker,'read_video',lambda *a,**kw:([None],10))
+    monkeypatch.setattr(worker,'read_video',lambda *a,**kw:([None, None], 1, [0., .5]))
     monkeypatch.setenv('GLAZZA_WORKER_KEY','worker-test-key-'*3)
     monkeypatch.setenv('GLAZZA_DATA',str(tmp_path))
     (tmp_path/'jobs').mkdir()

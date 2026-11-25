@@ -1,4 +1,5 @@
 """Isolated Chromium regressions: alarms survive forms, refreshes and map state."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -24,6 +25,82 @@ def refresh_page(page):
             raise AssertionError('Previous refresh did not finish')
         page.wait_for_timeout(50)
     page.evaluate('refresh()')
+
+
+def check_retail_review(page, store):
+    # The operator must find older, unresolved alerts even when the unfiltered
+    # overview only loaded the latest 200 person events.
+    now = time.time()
+    store.execute("INSERT INTO sites VALUES(?,?,?,?,?)", ('retail-fixture','default','Тест магазина','retail','["person","theft"]'))
+    zones = [
+        {'name':name,'restricted':False,'points':[[left,.1],[left+.15,.1],[left+.15,.3],[left,.3]]}
+        for name,left in [('shelf_a',.1),('tills',.4),('door',.7)]
+    ]
+    store.execute("INSERT INTO cameras(id,name,stream,site_id,zones) VALUES(?,?,?,?,?)",
+                  ('retail_cam','Торговый зал','rtsp://127.0.0.1/test','retail-fixture',json.dumps(zones)))
+    route = store.event(source='retail_route', source_id='retail-track', camera='retail_cam', site_id='retail-fixture',
+                        kind='theft', score=None, started=now-800, ended=now-790,
+                        details={'signal':'shelf_to_exit','shelf_zone':'shelf_a','checkout_zone':'tills',
+                                 'exit_zone':'door','start_seconds':2,'end_seconds':8})
+    for index in range(201):
+        store.event(source='frigate', source_id=f'retail-person-{index}', camera='retail_cam', site_id='retail-fixture',
+                    kind='person', score=.8, started=now-300+index)
+    page.evaluate("navigate('overview')")
+    refresh_page(page)
+    page.locator('#site-selector').select_option('default')
+    page.locator('#open-thefts').wait_for(state='hidden')
+    page.locator('#site-selector').select_option('retail-fixture')
+    page.locator('#retail-monitor').wait_for()
+    assert page.locator('.theft-alert-count').inner_text() == '1'
+    page.locator('[data-action=retail-setup]').click()
+    page.locator('#route-form select[name=shelf_zone]').select_option('shelf_a')
+    page.locator('#route-form select[name=checkout_zone]').select_option('shelf_a')
+    page.locator('#route-form select[name=exit_zone]').select_option('door')
+    page.get_by_role('button',name='Включить маршрут').click()
+    assert 'разные зоны' in page.locator('[data-route-error]').inner_text()
+    page.locator('#route-form select[name=checkout_zone]').select_option('tills')
+    page.get_by_role('button',name='Включить маршрут').click()
+    page.get_by_text('Маршрут включён',exact=True).wait_for()
+    page.locator('#modal-close').click()
+    refresh_page(page)
+    assert 'Камер с маршрутом: 1' in page.locator('#retail-monitor').inner_text()
+    page.locator('[data-action=retail-setup]').click()
+    assert page.locator('#route-form select[name=checkout_zone]').input_value() == 'tills'
+    page.get_by_role('button',name='Отключить маршрут').click()
+    page.get_by_text('Маршрут выключен',exact=True).wait_for()
+    page.locator('#modal-close').click()
+    refresh_page(page)
+    assert 'Маршрут не настроен' in page.locator('#retail-monitor').inner_text()
+    page.locator('#open-thefts').click()
+    page.locator(f'[data-event="{route}"]').click()
+    assert page.locator('#modal video').get_attribute('src') == f'/api/events/{route}/media/clip'
+    assert 'shelf_a' in page.locator('.theft-facts').inner_text()
+    assert '2–8 с' in page.locator('.theft-interval').inner_text()
+    assert 'Оценка модели' not in page.locator('#modal').inner_text()
+    # Keep the fixture independent of NVR connectivity. An operator can
+    # retain an inconclusive item and add a note even if its clip expired.
+    page.locator('#review-note').fill('Нужен более длинный фрагмент')
+    store.execute('UPDATE events SET note=? WHERE id=?', ('Уточнить у смены',route))
+    page.locator('[data-review=new]').click()
+    page.locator('#theft-reload').wait_for()
+    assert page.locator('#review-note').input_value() == 'Нужен более длинный фрагмент'
+    page.locator('#theft-reload').click()
+    page.locator('#theft-reload').wait_for(state='hidden')
+    assert page.locator('#review-note').input_value() == 'Уточнить у смены'
+    page.locator('#review-note').fill('Покупатель вышел без товара')
+    page.locator('[data-review=dismissed]').click()
+    page.locator('#modal').wait_for(state='hidden')
+    page.locator(f'[data-event="{route}"]').wait_for(state='hidden')
+    page.locator('[data-filter=status]').select_option('dismissed')
+    page.locator(f'[data-event="{route}"]').click()
+    assert page.locator('#review-note').input_value() == 'Покупатель вышел без товара'
+    assert 'Сигнал отклонён' in page.locator('.detail-meta').inner_text()
+    page.set_viewport_size({'width':390,'height':844})
+    assert page.evaluate('document.querySelector("#modal-body").scrollWidth <= document.querySelector("#modal-body").clientWidth')
+    page.locator('#modal-close').click()
+    page.locator('[data-view=overview]').click()
+    page.locator('#retail-monitor').wait_for()
+    assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
 
 
 def main():
@@ -133,9 +210,10 @@ def main():
                     refresh_page(page)
                     assert page.locator('.fight-alert').count() == 0
                     assert page.evaluate('document.activeElement.id') == 'breadcrumb'
+                    check_retail_review(page, store)
                     assert not errors, errors
                     browser.close()
-                print('PASS: fresh/resolved fight alarms with selected file and focus; map alarm deduplication/removal; modal preservation; alarm keyboard focus/removal/navigation; saved admission person/decision/comment; no JS errors')
+                print('PASS: fresh/resolved fight alarms with selected file and focus; map alarm deduplication/removal; modal preservation; alarm keyboard focus/removal/navigation; saved admission person/decision/comment; retail site scoping, shelf/checkout/exit setup and disabling, backlog queue, evidence and conflicting review; no JS errors')
             finally:
                 server.terminate()
                 try: server.wait(timeout=5)
@@ -143,4 +221,9 @@ def main():
 
 
 if __name__ == '__main__':
+    from browser_multicam_visits import main as check_multicam_and_visits
+    from browser_visits_config import main as check_visit_configuration
+
     main()
+    check_multicam_and_visits()
+    check_visit_configuration()

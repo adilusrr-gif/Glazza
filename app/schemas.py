@@ -84,6 +84,8 @@ class Camera(CameraLocation):
 class Review(BaseModel):
     status: Literal['new', 'confirmed', 'dismissed']
     note: str = Field(default='', max_length=2000)
+    expected_status: Literal['new', 'confirmed', 'dismissed'] | None = None
+    expected_note: str | None = Field(default=None, max_length=2000)
 
 
 class ZoneUpdate(BaseModel):
